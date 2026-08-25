@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EiendomsLogg</title>
+<meta name="description" content="EiendomsLogg — registrer feil, last opp bilder og kvitteringer, planlegg vedlikehold og gjennomfør digitale inspeksjoner for hver bolig.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header-inner">
+    <div class="brand">
+      <span class="logo-mark">EL</span>
+      <span class="logo-word">Eiendoms<em>Logg</em></span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-ghost btn-small" id="exportBtn" type="button">Eksporter data</button>
+      <button class="btn btn-primary btn-small" id="quickAddBtn" type="button">+ Ny hendelse</button>
+    </div>
+  </div>
+  <nav class="tab-nav" aria-label="Hovedmeny">
+    <button class="tab-btn active" data-view="dashboard">Oversikt</button>
+    <button class="tab-btn" data-view="properties">Boliger</button>
+    <button class="tab-btn" data-view="log">Logg</button>
+    <button class="tab-btn" data-view="maintenance">Vedlikehold</button>
+    <button class="tab-btn" data-view="inspection">Inspeksjon</button>
+    <button class="tab-btn" data-view="reports">Rapporter</button>
+  </nav>
+</header>
+
+<main class="app-main">
+  <div class="view-wrap" id="viewWrap">
+    <!-- Views are rendered here by app.js -->
+  </div>
+</main>
+
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<template id="tpl-empty-state">
+  <div class="empty-state">
+    <p class="empty-title"></p>
+    <p class="empty-body"></p>
+    <button class="btn btn-primary empty-action" type="button"></button>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
