@@ -6,17 +6,23 @@
 (function () {
   'use strict';
 
-  var STORAGE_KEY = 'eiendomslogg_v1';
+  var DATA_PREFIX = 'eiendomslogg_data_';
+  var USERS_KEY = 'eiendomslogg_users';
+  var SESSION_KEY = 'eiendomslogg_session';
 
-  /* ---------------- Storage / data layer ---------------- */
+  /* ---------------- Storage / data layer (per-user) ----------------
+     NOTE: everything below is stored in the browser's localStorage.
+     There is no server. This is fine for a prototype/demo, but it
+     means data lives only on this device/browser, and account
+     "security" here is not real security — see Users module below. */
 
   function emptyData() {
     return { properties: [], entries: [], maintenance: [], inspections: [] };
   }
 
-  function loadData() {
+  function loadDataForUser(userId) {
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(DATA_PREFIX + userId);
       if (!raw) return emptyData();
       var parsed = JSON.parse(raw);
       return Object.assign(emptyData(), parsed);
@@ -27,8 +33,9 @@
   }
 
   function saveData() {
+    if (!currentUser) return false;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+      localStorage.setItem(DATA_PREFIX + currentUser.id, JSON.stringify(DB));
       return true;
     } catch (e) {
       console.error('Kunne ikke lagre data', e);
@@ -37,7 +44,84 @@
     }
   }
 
-  var DB = loadData();
+  var DB = emptyData();
+  var currentUser = null;
+  var phase = 'landing'; // 'landing' | 'login' | 'signup' | 'paywall' | 'app'
+
+  /* ---------------- Users / session ----------------
+     Passwords are hashed with a simple, non-cryptographic hash and a
+     per-user salt. This stops passwords sitting in plain text, but it
+     is NOT secure and must not be relied on for real customer data.
+     A real launch needs a proper backend auth provider. */
+
+  function loadUsers() {
+    try {
+      var raw = localStorage.getItem(USERS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function saveUsers(list) {
+    localStorage.setItem(USERS_KEY, JSON.stringify(list));
+  }
+  function randomSalt() {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+  function hashPassword(password, salt) {
+    var combined = salt + '::' + password;
+    var hash = 0;
+    for (var i = 0; i < combined.length; i++) {
+      hash = ((hash << 5) - hash) + combined.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  var Users = {
+    findByEmail: function (email) {
+      email = (email || '').trim().toLowerCase();
+      return loadUsers().find(function (u) { return u.email === email; });
+    },
+    get: function (id) {
+      return loadUsers().find(function (u) { return u.id === id; });
+    },
+    create: function (name, email, password) {
+      var users = loadUsers();
+      var salt = randomSalt();
+      var user = {
+        id: uid('user'),
+        name: name,
+        email: email.trim().toLowerCase(),
+        salt: salt,
+        passwordHash: hashPassword(password, salt),
+        subscribed: false,
+        plan: null,
+        createdAt: todayISO()
+      };
+      users.push(user);
+      saveUsers(users);
+      return user;
+    },
+    verify: function (email, password) {
+      var user = Users.findByEmail(email);
+      if (!user) return null;
+      if (hashPassword(password, user.salt) !== user.passwordHash) return null;
+      return user;
+    },
+    setSubscribed: function (userId, plan) {
+      var users = loadUsers();
+      var u = users.find(function (x) { return x.id === userId; });
+      if (!u) return;
+      u.subscribed = true;
+      u.plan = plan;
+      u.subscribedAt = todayISO();
+      saveUsers(users);
+      if (currentUser && currentUser.id === userId) currentUser = u;
+    }
+  };
+
+  function getSessionUserId() { return localStorage.getItem(SESSION_KEY); }
+  function setSession(userId) { localStorage.setItem(SESSION_KEY, userId); }
+  function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
   function uid(prefix) {
     return (prefix || 'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -169,11 +253,11 @@
 
   /* ---------------- DOM refs ---------------- */
 
+  var headerWrap = document.getElementById('headerWrap');
   var viewWrap = document.getElementById('viewWrap');
   var modalOverlay = document.getElementById('modalOverlay');
   var modalEl = document.getElementById('modal');
   var toastEl = document.getElementById('toast');
-  var tabBtns = document.querySelectorAll('.tab-btn');
 
   /* ---------------- Toast ---------------- */
 
@@ -212,19 +296,150 @@
     state.view = view;
     if (opts.propertyId !== undefined) state.selectedPropertyId = opts.propertyId;
     if (opts.reportId !== undefined) state.selectedReportId = opts.reportId;
-    tabBtns.forEach(function (btn) {
-      btn.classList.toggle('active', btn.dataset.view === view);
-    });
+    renderHeader();
     render();
     window.scrollTo({ top: 0, behavior: 'auto' });
   }
 
-  tabBtns.forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      state.wizard = null;
-      setView(btn.dataset.view);
+  function applyViewWrapClass() {
+    if (phase === 'app') viewWrap.classList.remove('landing-wrap');
+    else viewWrap.classList.add('landing-wrap');
+  }
+
+  function setPhase(newPhase) {
+    phase = newPhase;
+    applyViewWrapClass();
+    renderHeader();
+    renderPhaseView();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
+  function renderPhaseView() {
+    if (phase === 'landing') return renderLanding();
+    if (phase === 'login') return renderLogin();
+    if (phase === 'signup') return renderSignup();
+    if (phase === 'paywall') return renderPaywall();
+    if (phase === 'app') return render();
+  }
+
+  function logInAs(user) {
+    currentUser = user;
+    setSession(user.id);
+    DB = loadDataForUser(user.id);
+    state.view = 'dashboard';
+    state.selectedPropertyId = null;
+    state.selectedReportId = null;
+    state.wizard = null;
+    showToast('Velkommen, ' + user.name + '.');
+    setPhase(user.subscribed ? 'app' : 'paywall');
+  }
+
+  function handleLogout() {
+    clearSession();
+    currentUser = null;
+    DB = emptyData();
+    state.view = 'dashboard';
+    state.selectedPropertyId = null;
+    state.selectedReportId = null;
+    state.wizard = null;
+    showToast('Logget ut.');
+    setPhase('landing');
+  }
+
+  /* ---------------- Header rendering ---------------- */
+
+  function renderHeader() {
+    if (phase === 'app') {
+      headerWrap.innerHTML = appHeaderHtml();
+      bindAppHeaderEvents();
+    } else {
+      headerWrap.innerHTML = marketingHeaderHtml();
+      bindMarketingHeaderEvents();
+    }
+  }
+
+  function tabButtonHtml(view, label) {
+    return '<button class="tab-btn' + (state.view === view ? ' active' : '') + '" data-view="' + view + '">' + label + '</button>';
+  }
+
+  function appHeaderHtml() {
+    var initials = currentUser && currentUser.name ? currentUser.name.trim().charAt(0).toUpperCase() : '?';
+    return '' +
+      '<header class="app-header">' +
+        '<div class="app-header-inner">' +
+          '<div class="brand"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logg</em></span></div>' +
+          '<div class="header-actions">' +
+            '<button class="btn btn-ghost btn-small" id="exportBtn" type="button"><span class="full-label">Eksporter data</span></button>' +
+            '<button class="btn btn-primary btn-small" id="quickAddBtn" type="button">+ Ny hendelse</button>' +
+            '<span class="account-pill"><span class="account-avatar">' + escapeHtml(initials) + '</span>' + escapeHtml(currentUser ? currentUser.name : '') + '</span>' +
+            '<button class="btn btn-ghost btn-small" id="logoutBtn" type="button">Logg ut</button>' +
+          '</div>' +
+        '</div>' +
+        '<nav class="tab-nav" aria-label="Hovedmeny">' +
+          tabButtonHtml('dashboard', 'Oversikt') +
+          tabButtonHtml('properties', 'Boliger') +
+          tabButtonHtml('log', 'Logg') +
+          tabButtonHtml('maintenance', 'Vedlikehold') +
+          tabButtonHtml('inspection', 'Inspeksjon') +
+          tabButtonHtml('reports', 'Rapporter') +
+        '</nav>' +
+      '</header>';
+  }
+
+  function bindAppHeaderEvents() {
+    document.querySelectorAll('.tab-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.wizard = null;
+        setView(btn.dataset.view);
+      });
     });
-  });
+    var quickAdd = document.getElementById('quickAddBtn');
+    if (quickAdd) quickAdd.addEventListener('click', function () { openEntryForm({}); });
+    var exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) exportBtn.addEventListener('click', exportDataHandler);
+    var logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+  }
+
+  function marketingHeaderHtml() {
+    var showLogout = phase === 'paywall';
+    return '' +
+      '<header class="marketing-header">' +
+        '<div class="marketing-header-inner">' +
+          '<div class="brand" id="brandHome" style="cursor:pointer;"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logg</em></span></div>' +
+          '<nav class="marketing-nav-links">' +
+            (phase === 'landing' ? '<a href="#slik-fungerer-det">Slik fungerer det</a><a href="#priser">Priser</a>' : '') +
+            (showLogout
+              ? '<a id="navLogout">Logg ut</a>'
+              : '<a id="navLogin">Logg inn</a><a class="btn btn-primary btn-small" id="navSignup">Kom i gang</a>') +
+          '</nav>' +
+        '</div>' +
+      '</header>';
+  }
+
+  function bindMarketingHeaderEvents() {
+    var brand = document.getElementById('brandHome');
+    if (brand) brand.addEventListener('click', function () { if (!currentUser) setPhase('landing'); });
+    var navLogin = document.getElementById('navLogin');
+    if (navLogin) navLogin.addEventListener('click', function () { setPhase('login'); });
+    var navSignup = document.getElementById('navSignup');
+    if (navSignup) navSignup.addEventListener('click', function () { setPhase('signup'); });
+    var navLogout = document.getElementById('navLogout');
+    if (navLogout) navLogout.addEventListener('click', handleLogout);
+  }
+
+  function exportDataHandler() {
+    var blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'eiendomslogg-data-' + todayISO() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Data eksportert som JSON.');
+  }
 
   /* ---------------- File helpers ---------------- */
 
@@ -303,6 +518,239 @@
       isEmpty: function () { return !hasDrawn; },
       toDataURL: function () { return canvas.toDataURL('image/png'); }
     };
+  }
+
+  /* ================================================================
+     ICONS (small inline SVGs, currentColor)
+     ================================================================ */
+
+  function iconHome() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>'; }
+  function iconClipboard() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M8 11h8M8 15h5"/></svg>'; }
+  function iconCamera() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="4"/><path d="M8.5 7l1.2-2h4.6l1.2 2"/></svg>'; }
+  function iconDoc() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h9l4 4v16H6z"/><path d="M14 2v5h5"/><path d="M9 13h6M9 17h6"/></svg>'; }
+  function iconCameraSmall() { return '<svg viewBox="0 0 48 48" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="12" width="36" height="26" rx="2"/><circle cx="24" cy="25" r="7"/><path d="M17 12l2.5-4h9L31 12"/></svg>'; }
+  function iconLock() { return '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'; }
+  function stampSvg() {
+    return '<svg viewBox="0 0 100 100" width="72" height="72"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
+      '<text x="50" y="44" text-anchor="middle" font-family="\'IBM Plex Mono\', monospace" font-size="10.5" font-weight="600" fill="currentColor">GODKJENT</text>' +
+      '<text x="50" y="64" text-anchor="middle" font-family="\'IBM Plex Mono\', monospace" font-size="8" fill="currentColor">' + todayISO().split('-').reverse().join('.') + '</text></svg>';
+  }
+
+  /* ================================================================
+     LANDING PAGE (marketing homepage)
+     ================================================================ */
+
+  function heroIllustrationHtml() {
+    return '<div class="hero-visual" aria-hidden="true">' +
+      '<div class="hv-tabs"><span class="hv-tab">H0101</span><span class="hv-tab">H0203</span><span class="hv-tab active">H0304</span></div>' +
+      '<div class="hv-card-stack">' +
+        '<div class="hv-card hv-receipt">' +
+          '<div class="hv-card-head">KVITTERING #0451</div>' +
+          '<div class="hv-receipt-line"><span>Rørlegger — bad H0304</span><span>kr 1 250</span></div>' +
+          '<div class="hv-receipt-line"><span>Nytt sluk + tetting</span><span>kr 890</span></div>' +
+          '<div class="hv-receipt-rule"></div>' +
+          '<div class="hv-receipt-line total"><span>Totalt</span><span>kr 2 140</span></div>' +
+          '<div class="hv-receipt-date mono">12.03.2026</div>' +
+        '</div>' +
+        '<div class="hv-card hv-photo">' +
+          '<div class="hv-photo-thumb">' + iconCameraSmall() + '</div>' +
+          '<div class="hv-photo-meta"><p class="hv-photo-tag">BAD · H0304</p><p>Vannskade ved sluk, dokumentert før reparasjon</p></div>' +
+        '</div>' +
+        '<div class="hv-card hv-report">' +
+          '<div class="hv-stamp">' + stampSvg() + '</div>' +
+          '<div class="hv-card-head">UTFLYTTINGSRAPPORT</div>' +
+          '<p class="hv-report-line">Leilighet H0304 — 3 rom</p>' +
+          '<p class="hv-report-line muted">6 bilder · 0 avvik registrert</p>' +
+          '<div class="hv-sign-row"><span>Signatur</span><span class="hv-sign-line"></span></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function howStep(num, title, body, iconHtml) {
+    return '<div class="how-step"><div class="how-step-icon">' + iconHtml + '</div><p class="how-step-num mono">STEG ' + num + '</p><h3>' + title + '</h3><p>' + body + '</p></div>';
+  }
+
+  function lpFeature(title, body) {
+    return '<div class="lp-feature-card"><h3>' + title + '</h3><p>' + body + '</p></div>';
+  }
+
+  function pricingCardHtml(buttonId, buttonLabel) {
+    return '<div class="pricing-wrap"><div class="pricing-card">' +
+      '<span class="pricing-badge">ABONNEMENT</span>' +
+      '<p class="pricing-price">299 kr<span> / måned</span></p>' +
+      '<p class="pricing-sub">Opptil 10 boliger. Legg til flere for 19 kr/bolig/mnd.</p>' +
+      '<ul class="pricing-features">' +
+        '<li>Ubegrenset feilregistrering og logg</li>' +
+        '<li>Bilder, dokumenter og kvitteringer</li>' +
+        '<li>Digitale inspeksjoner med signatur</li>' +
+        '<li>Automatiske PDF-rapporter</li>' +
+        '<li>Vedlikeholdsplan med varsler</li>' +
+      '</ul>' +
+      '<button class="btn btn-primary btn-block" id="' + buttonId + '">' + buttonLabel + '</button>' +
+    '</div></div>';
+  }
+
+  function renderLanding() {
+    var html = '';
+
+    html += '<section class="lp-section lp-hero"><div class="lp-inner lp-hero-grid">' +
+      '<div>' +
+        '<p class="eyebrow">FOR SMÅ OG MELLOMSTORE UTLEIERE</p>' +
+        '<h1>Slutt å lete etter kvitteringen i en e-posttråd.</h1>' +
+        '<p class="lp-hero-lede">EiendomsLogg samler feil, bilder, kvitteringer, vedlikehold og inspeksjoner for hver bolig på ett sted — med dato, historikk og signatur, klart når noen spør.</p>' +
+        '<div class="lp-hero-actions">' +
+          '<button class="btn btn-primary" id="heroCta">Kom i gang</button>' +
+          '<a class="btn btn-ghost" href="#slik-fungerer-det">Se hvordan det fungerer</a>' +
+        '</div>' +
+        '<p class="lp-hero-note">Krever abonnement. Ingen bindingstid — avslutt når du vil.</p>' +
+      '</div>' +
+      heroIllustrationHtml() +
+    '</div></section>';
+
+    html += '<section class="lp-section tinted" id="slik-fungerer-det"><div class="lp-inner">' +
+      '<p class="eyebrow">SLIK FUNGERER DET</p>' +
+      '<h2>Fra registrert bolig til ferdig rapport</h2>' +
+      '<p class="lp-lede">Fire steg som dekker det meste en utleier trenger å holde styr på gjennom hele leieforholdet.</p>' +
+      '<div class="how-steps">' +
+        howStep('01', 'Registrer boligen', 'Legg inn adresse, rom og leietaker. Dette blir startpunktet for boligens egen logg.', iconHome()) +
+        howStep('02', 'Loggfør det som skjer', 'Feil, vedlikehold, kvitteringer og bilder registreres fortløpende, på PC eller mobil.', iconClipboard()) +
+        howStep('03', 'Gjennomfør inspeksjon', 'Ved inn- eller utflytting fylles en digital befaring ut med bilder og signatur fra begge parter.', iconCamera()) +
+        howStep('04', 'Få automatisk rapport', 'Inspeksjonen blir til en ferdig rapport, klar til å sendes eller arkiveres.', iconDoc()) +
+      '</div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section"><div class="lp-inner">' +
+      '<p class="eyebrow">ALT PÅ ETT STED</p><h2>Bygget rundt hvordan en bolig faktisk driftes</h2>' +
+      '<p class="lp-lede">Seks moduler som dekker det meste en utleier trenger å holde styr på.</p>' +
+      '<div class="lp-feature-grid">' +
+        lpFeature('Feilregistrering', 'Registrer feil og henvendelser fra leietaker, med status fra meldt til utbedret.') +
+        lpFeature('Bilder og dokumenter', 'Last opp bilder, kontrakter og kvitteringer, søkbart i ettertid.') +
+        lpFeature('Vedlikeholdsplan', 'Planlegg service og sesongvedlikehold, få varsel før noe forfaller.') +
+        lpFeature('Digital inspeksjon', 'Gjennomfør inn- og utflyttingskontroller på mobilen, med signatur på stedet.') +
+        lpFeature('Automatiske rapporter', 'Inspeksjoner blir til ferdige rapporter, klare til å sendes eller arkiveres.') +
+        lpFeature('Historikk per bolig', 'Se hele livsløpet til hver leilighet — hva som er gjort, når og hva det kostet.') +
+      '</div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section tinted" id="priser"><div class="lp-inner" style="text-align:center;">' +
+      '<p class="eyebrow" style="text-align:center;">PRISER</p><h2 style="margin-left:auto;margin-right:auto;">Ett abonnement, alt inkludert</h2>' +
+      '<p class="lp-lede" style="margin-left:auto;margin-right:auto;text-align:center;">Ingen skjulte kostnader. Legg til så mange boliger du trenger.</p>' +
+      pricingCardHtml('pricingCta', 'Kom i gang') +
+    '</div></section>';
+
+    html += '<footer class="lp-footer"><div class="lp-inner lp-footer-inner">' +
+      '<span>© 2026 EiendomsLogg</span><span class="mono">LOGGET I KRISTIANSAND</span>' +
+    '</div></footer>';
+
+    viewWrap.innerHTML = html;
+
+    var heroCta = document.getElementById('heroCta');
+    if (heroCta) heroCta.addEventListener('click', function () { setPhase(currentUser ? 'paywall' : 'signup'); });
+    var pricingCta = document.getElementById('pricingCta');
+    if (pricingCta) pricingCta.addEventListener('click', function () { setPhase(currentUser ? 'paywall' : 'signup'); });
+  }
+
+  /* ================================================================
+     AUTH: login / signup
+     ================================================================ */
+
+  function renderLogin(errorMsg) {
+    viewWrap.innerHTML =
+      '<div class="auth-wrap"><div class="auth-card">' +
+        '<h1>Logg inn</h1>' +
+        '<p class="lp-lede">Logg inn for å administrere boligene dine.</p>' +
+        (errorMsg ? '<div class="auth-error">' + escapeHtml(errorMsg) + '</div>' : '') +
+        '<form id="loginForm">' +
+          '<div class="form-field"><label for="li-email">E-post</label><input id="li-email" type="email" name="email" required autocomplete="email"></div>' +
+          '<div class="form-field"><label for="li-password">Passord</label><input id="li-password" type="password" name="password" required autocomplete="current-password"></div>' +
+          '<button type="submit" class="btn btn-primary btn-block">Logg inn</button>' +
+        '</form>' +
+        '<p class="auth-switch">Ny hos EiendomsLogg? <a id="toSignup">Opprett konto</a></p>' +
+      '</div></div>';
+
+    document.getElementById('toSignup').addEventListener('click', function () { setPhase('signup'); });
+    document.getElementById('loginForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = new FormData(e.target);
+      var email = (fd.get('email') || '').toString().trim();
+      var password = (fd.get('password') || '').toString();
+      var user = Users.verify(email, password);
+      if (!user) { renderLogin('Feil e-post eller passord.'); return; }
+      logInAs(user);
+    });
+  }
+
+  function renderSignup(errorMsg) {
+    viewWrap.innerHTML =
+      '<div class="auth-wrap"><div class="auth-card">' +
+        '<h1>Opprett konto</h1>' +
+        '<p class="lp-lede">Registrer deg for å sette opp abonnementet ditt.</p>' +
+        (errorMsg ? '<div class="auth-error">' + escapeHtml(errorMsg) + '</div>' : '') +
+        '<form id="signupForm">' +
+          '<div class="form-field"><label for="su-name">Navn</label><input id="su-name" name="name" required autocomplete="name"></div>' +
+          '<div class="form-field"><label for="su-email">E-post</label><input id="su-email" type="email" name="email" required autocomplete="email"></div>' +
+          '<div class="form-field"><label for="su-password">Passord</label><input id="su-password" type="password" name="password" required minlength="6" autocomplete="new-password"></div>' +
+          '<button type="submit" class="btn btn-primary btn-block">Opprett konto</button>' +
+        '</form>' +
+        '<p class="auth-switch">Har du allerede en konto? <a id="toLogin">Logg inn</a></p>' +
+      '</div></div>';
+
+    document.getElementById('toLogin').addEventListener('click', function () { setPhase('login'); });
+    document.getElementById('signupForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = new FormData(e.target);
+      var name = (fd.get('name') || '').toString().trim();
+      var email = (fd.get('email') || '').toString().trim();
+      var password = (fd.get('password') || '').toString();
+      if (!name || !email || password.length < 6) {
+        renderSignup('Fyll ut alle felt. Passord må ha minst 6 tegn.');
+        return;
+      }
+      if (Users.findByEmail(email)) {
+        renderSignup('Det finnes allerede en konto med denne e-postadressen.');
+        return;
+      }
+      var user = Users.create(name, email, password);
+      logInAs(user);
+    });
+  }
+
+  /* ================================================================
+     PAYWALL
+     ================================================================ */
+
+  function renderPaywall() {
+    viewWrap.innerHTML =
+      '<div class="paywall-wrap">' +
+        '<div class="paywall-lock">' + iconLock() + '</div>' +
+        '<h1>Fullfør abonnementet for å låse opp EiendomsLogg</h1>' +
+        '<p class="lp-lede">Hei ' + escapeHtml(currentUser ? currentUser.name : '') + '! Kontoen din er opprettet. Aktiver abonnementet for å få tilgang til boliger, logg, vedlikehold og inspeksjoner.</p>' +
+        pricingCardReplace() +
+      '</div>';
+
+    document.getElementById('activateSub').addEventListener('click', function () {
+      Users.setSubscribed(currentUser.id, 'standard');
+      showToast('Abonnement aktivert. Velkommen inn!');
+      state.view = 'dashboard';
+      setPhase('app');
+    });
+  }
+
+  function pricingCardReplace() {
+    return '<div class="pricing-wrap"><div class="pricing-card">' +
+      '<span class="pricing-badge">ABONNEMENT</span>' +
+      '<p class="pricing-price">299 kr<span> / måned</span></p>' +
+      '<p class="pricing-sub">Opptil 10 boliger. Avslutt når du vil.</p>' +
+      '<ul class="pricing-features">' +
+        '<li>Ubegrenset feilregistrering og logg</li>' +
+        '<li>Bilder, dokumenter og kvitteringer</li>' +
+        '<li>Digitale inspeksjoner med signatur</li>' +
+        '<li>Automatiske PDF-rapporter</li>' +
+      '</ul>' +
+      '<button class="btn btn-primary btn-block" id="activateSub">Aktiver abonnement</button>' +
+      '<p class="demo-note">Demo-modus: dette er en simulert betaling, ingen kort blir belastet. I en skarp versjon kobles dette til en betalingsleverandør som Stripe eller Vipps.</p>' +
+    '</div></div>';
   }
 
   /* ================================================================
@@ -1241,23 +1689,6 @@
     return '<span class="badge badge-neutral">—</span>';
   }
 
-  /* ---------------- Global header actions ---------------- */
-
-  document.getElementById('quickAddBtn').addEventListener('click', function () { openEntryForm({}); });
-
-  document.getElementById('exportBtn').addEventListener('click', function () {
-    var blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'eiendomslogg-data-' + todayISO() + '.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Data eksportert som JSON.');
-  });
-
   /* ---------------- Demo data ---------------- */
 
   function seedDemoData() {
@@ -1271,6 +1702,26 @@
 
   /* ---------------- Init ---------------- */
 
-  render();
+  function initApp() {
+    var sessionUserId = getSessionUserId();
+    if (sessionUserId) {
+      var user = Users.get(sessionUserId);
+      if (user) {
+        currentUser = user;
+        DB = loadDataForUser(user.id);
+        phase = user.subscribed ? 'app' : 'paywall';
+      } else {
+        clearSession();
+        phase = 'landing';
+      }
+    } else {
+      phase = 'landing';
+    }
+    applyViewWrapClass();
+    renderHeader();
+    renderPhaseView();
+  }
+
+  initApp();
 
 })();
