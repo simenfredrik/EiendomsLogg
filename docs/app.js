@@ -13,8 +13,8 @@
      SUPABASE CONFIG — fyll inn dine egne verdier her
      Project Settings → API i Supabase-dashbordet.
      ================================================================ */
-  var SUPABASE_URL = 'https://kvbnmdjrdgeqfaagmjgt.supabase.co';
-  var SUPABASE_ANON_KEY = 'sb_publishable_MNuDMBcXuYAa1PmpYKcMHg_s_timlb3';
+  var SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+  var SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
 
   var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -678,7 +678,7 @@
       '<p class="eyebrow">ALT PÅ ETT STED</p><h2>Bygget rundt hvordan en bolig faktisk driftes</h2>' +
       '<p class="lp-lede">Seks moduler som dekker det meste en utleier trenger å holde styr på.</p>' +
       '<div class="lp-feature-grid">' +
-        lpFeature('Feilregistrering', 'Registrer feil og henvendelser fra leietaker, med status fra meldt til utbedret.') +
+        lpFeature('Feilregistrering', 'Det leietaker melder om forsvinner ikke i en tekstmelding du ikke finner igjen — skriv det inn på et minutt, med status fra meldt til utbedret.') +
         lpFeature('Bilder og dokumenter', 'Last opp bilder, kontrakter og kvitteringer, søkbart i ettertid.') +
         lpFeature('Vedlikeholdsplan', 'Planlegg service og sesongvedlikehold, få varsel før noe forfaller.') +
         lpFeature('Digital inspeksjon', 'Gjennomfør inn- og utflyttingskontroller på mobilen, med signatur på stedet.') +
