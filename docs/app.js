@@ -1,127 +1,137 @@
 /* ============================================================
    EiendomsLogg — app logic
-   All data lives in localStorage. No server, no backend.
+   Backend: Supabase (Postgres database + Auth + Storage).
+   Fyll inn din egen prosjekt-URL og anon-nøkkel under før du
+   tar i bruk siden — se README-notatene fra Claude i chatten
+   for hvor du finner disse i Supabase-dashbordet.
    ============================================================ */
 
 (function () {
   'use strict';
 
-  var DATA_PREFIX = 'eiendomslogg_data_';
-  var USERS_KEY = 'eiendomslogg_users';
-  var SESSION_KEY = 'eiendomslogg_session';
+  /* ================================================================
+     SUPABASE CONFIG — fyll inn dine egne verdier her
+     Project Settings → API i Supabase-dashbordet.
+     ================================================================ */
+  var SUPABASE_URL = 'https://kvbnmdjrdgeqfaagmjgt.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_MNuDMBcXuYAa1PmpYKcMHg_s_timlb3';
 
-  /* ---------------- Storage / data layer (per-user) ----------------
-     NOTE: everything below is stored in the browser's localStorage.
-     There is no server. This is fine for a prototype/demo, but it
-     means data lives only on this device/browser, and account
-     "security" here is not real security — see Users module below. */
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  var DB = { properties: [], entries: [], maintenance: [], inspections: [] };
+  var currentUser = null; // { id, email, name, subscribed }
+  var phase = 'landing'; // 'landing' | 'login' | 'signup' | 'paywall' | 'app'
 
   function emptyData() {
     return { properties: [], entries: [], maintenance: [], inspections: [] };
   }
 
-  function loadDataForUser(userId) {
-    try {
-      var raw = localStorage.getItem(DATA_PREFIX + userId);
-      if (!raw) return emptyData();
-      var parsed = JSON.parse(raw);
-      return Object.assign(emptyData(), parsed);
-    } catch (e) {
-      console.error('Kunne ikke lese lagrede data', e);
-      return emptyData();
+  /* ---------------- Row <-> app object mapping ----------------
+     Supabase/Postgres columns are snake_case; the app's render
+     code (unchanged from the local-storage version) expects the
+     camelCase shape below, so every table has a small mapper. */
+
+  function mapProperty(row) {
+    return { id: row.id, name: row.name, address: row.address, rooms: row.rooms, tenantName: row.tenant_name, createdAt: row.created_at };
+  }
+  function propertyToRow(obj) {
+    var row = {};
+    if (obj.name !== undefined) row.name = obj.name;
+    if (obj.address !== undefined) row.address = obj.address;
+    if (obj.rooms !== undefined) row.rooms = obj.rooms;
+    if (obj.tenantName !== undefined) row.tenant_name = obj.tenantName;
+    return row;
+  }
+
+  function mapEntry(row) {
+    return { id: row.id, propertyId: row.property_id, type: row.type, title: row.title, description: row.description, date: row.date, status: row.status, cost: row.cost, photos: row.photos || [], documents: row.documents || [], createdAt: row.created_at };
+  }
+  function entryToRow(obj) {
+    var row = {};
+    if (obj.propertyId !== undefined) row.property_id = obj.propertyId;
+    if (obj.type !== undefined) row.type = obj.type;
+    if (obj.title !== undefined) row.title = obj.title;
+    if (obj.description !== undefined) row.description = obj.description;
+    if (obj.date !== undefined) row.date = obj.date;
+    if (obj.status !== undefined) row.status = obj.status;
+    if (obj.cost !== undefined) row.cost = obj.cost;
+    if (obj.photos !== undefined) row.photos = obj.photos;
+    if (obj.documents !== undefined) row.documents = obj.documents;
+    return row;
+  }
+
+  function mapMaintenance(row) {
+    return { id: row.id, propertyId: row.property_id, title: row.title, dueDate: row.due_date, recurring: row.recurring, notes: row.notes, status: row.status };
+  }
+  function maintenanceToRow(obj) {
+    var row = {};
+    if (obj.propertyId !== undefined) row.property_id = obj.propertyId;
+    if (obj.title !== undefined) row.title = obj.title;
+    if (obj.dueDate !== undefined) row.due_date = obj.dueDate;
+    if (obj.recurring !== undefined) row.recurring = obj.recurring;
+    if (obj.notes !== undefined) row.notes = obj.notes;
+    if (obj.status !== undefined) row.status = obj.status;
+    return row;
+  }
+
+  function mapInspection(row) {
+    return { id: row.id, propertyId: row.property_id, type: row.type, tenantName: row.tenant_name, date: row.date, rooms: row.rooms || [], tenantSignature: row.tenant_signature, landlordSignature: row.landlord_signature, createdAt: row.created_at };
+  }
+  function inspectionToRow(obj) {
+    var row = {};
+    if (obj.propertyId !== undefined) row.property_id = obj.propertyId;
+    if (obj.type !== undefined) row.type = obj.type;
+    if (obj.tenantName !== undefined) row.tenant_name = obj.tenantName;
+    if (obj.date !== undefined) row.date = obj.date;
+    if (obj.rooms !== undefined) row.rooms = obj.rooms;
+    if (obj.tenantSignature !== undefined) row.tenant_signature = obj.tenantSignature;
+    if (obj.landlordSignature !== undefined) row.landlord_signature = obj.landlordSignature;
+    return row;
+  }
+
+  /* ---------------- Load everything for a logged-in user ---------------- */
+
+  async function loadAllDataForUser(userId) {
+    var results = await Promise.all([
+      sb.from('properties').select('*').order('name'),
+      sb.from('entries').select('*').order('date', { ascending: false }),
+      sb.from('maintenance').select('*').order('due_date'),
+      sb.from('inspections').select('*').order('date', { ascending: false })
+    ]);
+    var errs = results.filter(function (r) { return r.error; });
+    if (errs.length) {
+      console.error('Feil ved lasting av data', errs);
+      showToast('Klarte ikke å laste alle data. Prøv å laste siden på nytt.', 'danger');
     }
+    return {
+      properties: (results[0].data || []).map(mapProperty),
+      entries: (results[1].data || []).map(mapEntry),
+      maintenance: (results[2].data || []).map(mapMaintenance),
+      inspections: (results[3].data || []).map(mapInspection)
+    };
   }
 
-  function saveData() {
-    if (!currentUser) return false;
-    try {
-      localStorage.setItem(DATA_PREFIX + currentUser.id, JSON.stringify(DB));
-      return true;
-    } catch (e) {
-      console.error('Kunne ikke lagre data', e);
-      showToast('Klarte ikke å lagre. Lagringen kan være full.', 'danger');
-      return false;
+  /* ---------------- File uploads (Supabase Storage) ----------------
+     Buckets "photos" and "documents" must exist — see setup notes.
+     Files are stored under {userId}/{propertyId}/{randomName}. */
+
+  async function uploadFiles(bucket, items, propertyId) {
+    if (!items || !items.length) return [];
+    var uploaded = [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      var path = currentUser.id + '/' + (propertyId || 'diverse') + '/' + uid('f') + '_' + safeName;
+      var res = await sb.storage.from(bucket).upload(path, item.file, { upsert: false });
+      if (res.error) {
+        showToast('Klarte ikke å laste opp ' + item.name + ': ' + res.error.message, 'danger');
+        throw res.error;
+      }
+      var pub = sb.storage.from(bucket).getPublicUrl(path);
+      uploaded.push({ name: item.name, url: pub.data.publicUrl });
     }
+    return uploaded;
   }
-
-  var DB = emptyData();
-  var currentUser = null;
-  var phase = 'landing'; // 'landing' | 'login' | 'signup' | 'paywall' | 'app'
-
-  /* ---------------- Users / session ----------------
-     Passwords are hashed with a simple, non-cryptographic hash and a
-     per-user salt. This stops passwords sitting in plain text, but it
-     is NOT secure and must not be relied on for real customer data.
-     A real launch needs a proper backend auth provider. */
-
-  function loadUsers() {
-    try {
-      var raw = localStorage.getItem(USERS_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
-  }
-  function saveUsers(list) {
-    localStorage.setItem(USERS_KEY, JSON.stringify(list));
-  }
-  function randomSalt() {
-    return Math.random().toString(36).slice(2) + Date.now().toString(36);
-  }
-  function hashPassword(password, salt) {
-    var combined = salt + '::' + password;
-    var hash = 0;
-    for (var i = 0; i < combined.length; i++) {
-      hash = ((hash << 5) - hash) + combined.charCodeAt(i);
-      hash |= 0;
-    }
-    return Math.abs(hash).toString(36);
-  }
-
-  var Users = {
-    findByEmail: function (email) {
-      email = (email || '').trim().toLowerCase();
-      return loadUsers().find(function (u) { return u.email === email; });
-    },
-    get: function (id) {
-      return loadUsers().find(function (u) { return u.id === id; });
-    },
-    create: function (name, email, password) {
-      var users = loadUsers();
-      var salt = randomSalt();
-      var user = {
-        id: uid('user'),
-        name: name,
-        email: email.trim().toLowerCase(),
-        salt: salt,
-        passwordHash: hashPassword(password, salt),
-        subscribed: false,
-        plan: null,
-        createdAt: todayISO()
-      };
-      users.push(user);
-      saveUsers(users);
-      return user;
-    },
-    verify: function (email, password) {
-      var user = Users.findByEmail(email);
-      if (!user) return null;
-      if (hashPassword(password, user.salt) !== user.passwordHash) return null;
-      return user;
-    },
-    setSubscribed: function (userId, plan) {
-      var users = loadUsers();
-      var u = users.find(function (x) { return x.id === userId; });
-      if (!u) return;
-      u.subscribed = true;
-      u.plan = plan;
-      u.subscribedAt = todayISO();
-      saveUsers(users);
-      if (currentUser && currentUser.id === userId) currentUser = u;
-    }
-  };
-
-  function getSessionUserId() { return localStorage.getItem(SESSION_KEY); }
-  function setSession(userId) { localStorage.setItem(SESSION_KEY, userId); }
-  function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
   function uid(prefix) {
     return (prefix || 'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -152,30 +162,37 @@
     return num.toLocaleString('nb-NO') + ' kr';
   }
 
-  /* ---------------- CRUD helpers ---------------- */
+  /* ---------------- CRUD helpers (Supabase-backed) ----------------
+     Each module keeps a synchronous in-memory copy (DB.*) so the
+     existing render functions can read it instantly, and writes
+     through to Supabase, updating the local copy once saved. */
 
   var Properties = {
     all: function () { return DB.properties.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'no'); }); },
     get: function (id) { return DB.properties.find(function (p) { return p.id === id; }); },
-    add: function (obj) {
-      obj.id = uid('prop');
-      obj.createdAt = todayISO();
-      DB.properties.push(obj);
-      saveData();
-      return obj;
+    add: async function (obj) {
+      var row = propertyToRow(obj);
+      row.user_id = currentUser.id;
+      var res = await sb.from('properties').insert(row).select().single();
+      if (res.error) { showToast('Klarte ikke å lagre bolig: ' + res.error.message, 'danger'); throw res.error; }
+      var mapped = mapProperty(res.data);
+      DB.properties.push(mapped);
+      return mapped;
     },
-    update: function (id, patch) {
-      var p = Properties.get(id);
-      if (!p) return;
-      Object.assign(p, patch);
-      saveData();
+    update: async function (id, patch) {
+      var row = propertyToRow(patch);
+      var res = await sb.from('properties').update(row).eq('id', id).select().single();
+      if (res.error) { showToast('Klarte ikke å oppdatere bolig: ' + res.error.message, 'danger'); throw res.error; }
+      var idx = DB.properties.findIndex(function (p) { return p.id === id; });
+      if (idx > -1) DB.properties[idx] = mapProperty(res.data);
     },
-    remove: function (id) {
+    remove: async function (id) {
+      var res = await sb.from('properties').delete().eq('id', id);
+      if (res.error) { showToast('Klarte ikke å slette bolig: ' + res.error.message, 'danger'); throw res.error; }
       DB.properties = DB.properties.filter(function (p) { return p.id !== id; });
       DB.entries = DB.entries.filter(function (e) { return e.propertyId !== id; });
       DB.maintenance = DB.maintenance.filter(function (m) { return m.propertyId !== id; });
       DB.inspections = DB.inspections.filter(function (i) { return i.propertyId !== id; });
-      saveData();
     }
   };
 
@@ -183,22 +200,26 @@
     all: function () { return DB.entries.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }); },
     forProperty: function (propertyId) { return Entries.all().filter(function (e) { return e.propertyId === propertyId; }); },
     get: function (id) { return DB.entries.find(function (e) { return e.id === id; }); },
-    add: function (obj) {
-      obj.id = uid('entry');
-      obj.createdAt = todayISO();
-      DB.entries.push(obj);
-      saveData();
-      return obj;
+    add: async function (obj) {
+      var row = entryToRow(obj);
+      row.user_id = currentUser.id;
+      var res = await sb.from('entries').insert(row).select().single();
+      if (res.error) { showToast('Klarte ikke å lagre hendelse: ' + res.error.message, 'danger'); throw res.error; }
+      var mapped = mapEntry(res.data);
+      DB.entries.push(mapped);
+      return mapped;
     },
-    update: function (id, patch) {
-      var e = Entries.get(id);
-      if (!e) return;
-      Object.assign(e, patch);
-      saveData();
+    update: async function (id, patch) {
+      var row = entryToRow(patch);
+      var res = await sb.from('entries').update(row).eq('id', id).select().single();
+      if (res.error) { showToast('Klarte ikke å oppdatere hendelse: ' + res.error.message, 'danger'); throw res.error; }
+      var idx = DB.entries.findIndex(function (e) { return e.id === id; });
+      if (idx > -1) DB.entries[idx] = mapEntry(res.data);
     },
-    remove: function (id) {
+    remove: async function (id) {
+      var res = await sb.from('entries').delete().eq('id', id);
+      if (res.error) { showToast('Klarte ikke å slette hendelse: ' + res.error.message, 'danger'); throw res.error; }
       DB.entries = DB.entries.filter(function (e) { return e.id !== id; });
-      saveData();
     }
   };
 
@@ -206,22 +227,27 @@
     all: function () { return DB.maintenance.slice().sort(function (a, b) { return a.dueDate.localeCompare(b.dueDate); }); },
     forProperty: function (propertyId) { return Maintenance.all().filter(function (m) { return m.propertyId === propertyId; }); },
     get: function (id) { return DB.maintenance.find(function (m) { return m.id === id; }); },
-    add: function (obj) {
-      obj.id = uid('maint');
-      obj.status = 'planlagt';
-      DB.maintenance.push(obj);
-      saveData();
-      return obj;
+    add: async function (obj) {
+      var row = maintenanceToRow(obj);
+      row.user_id = currentUser.id;
+      row.status = 'planlagt';
+      var res = await sb.from('maintenance').insert(row).select().single();
+      if (res.error) { showToast('Klarte ikke å lagre vedlikehold: ' + res.error.message, 'danger'); throw res.error; }
+      var mapped = mapMaintenance(res.data);
+      DB.maintenance.push(mapped);
+      return mapped;
     },
-    update: function (id, patch) {
-      var m = Maintenance.get(id);
-      if (!m) return;
-      Object.assign(m, patch);
-      saveData();
+    update: async function (id, patch) {
+      var row = maintenanceToRow(patch);
+      var res = await sb.from('maintenance').update(row).eq('id', id).select().single();
+      if (res.error) { showToast('Klarte ikke å oppdatere vedlikehold: ' + res.error.message, 'danger'); throw res.error; }
+      var idx = DB.maintenance.findIndex(function (m) { return m.id === id; });
+      if (idx > -1) DB.maintenance[idx] = mapMaintenance(res.data);
     },
-    remove: function (id) {
+    remove: async function (id) {
+      var res = await sb.from('maintenance').delete().eq('id', id);
+      if (res.error) { showToast('Klarte ikke å slette vedlikehold: ' + res.error.message, 'danger'); throw res.error; }
       DB.maintenance = DB.maintenance.filter(function (m) { return m.id !== id; });
-      saveData();
     }
   };
 
@@ -229,15 +255,19 @@
     all: function () { return DB.inspections.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }); },
     forProperty: function (propertyId) { return Inspections.all().filter(function (i) { return i.propertyId === propertyId; }); },
     get: function (id) { return DB.inspections.find(function (i) { return i.id === id; }); },
-    add: function (obj) {
-      obj.id = uid('insp');
-      DB.inspections.push(obj);
-      saveData();
-      return obj;
+    add: async function (obj) {
+      var row = inspectionToRow(obj);
+      row.user_id = currentUser.id;
+      var res = await sb.from('inspections').insert(row).select().single();
+      if (res.error) { showToast('Klarte ikke å lagre inspeksjon: ' + res.error.message, 'danger'); throw res.error; }
+      var mapped = mapInspection(res.data);
+      DB.inspections.push(mapped);
+      return mapped;
     },
-    remove: function (id) {
+    remove: async function (id) {
+      var res = await sb.from('inspections').delete().eq('id', id);
+      if (res.error) { showToast('Klarte ikke å slette rapport: ' + res.error.message, 'danger'); throw res.error; }
       DB.inspections = DB.inspections.filter(function (i) { return i.id !== id; });
-      saveData();
     }
   };
 
@@ -322,20 +352,66 @@
     if (phase === 'app') return render();
   }
 
-  function logInAs(user) {
-    currentUser = user;
-    setSession(user.id);
-    DB = loadDataForUser(user.id);
+  function getCheckoutStatusFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    return params.get('checkout'); // 'success' | 'cancel' | null
+  }
+
+  function clearCheckoutParamFromUrl() {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('checkout');
+    window.history.replaceState({}, '', url.pathname + url.search);
+  }
+
+  async function refetchSubscriptionStatus() {
+    var profileRes = await sb.from('profiles').select('subscribed').eq('id', currentUser.id).single();
+    if (profileRes.data) currentUser.subscribed = !!profileRes.data.subscribed;
+    return currentUser.subscribed;
+  }
+
+  async function waitForSubscriptionConfirmation() {
+    for (var i = 0; i < 8; i++) {
+      if (await refetchSubscriptionStatus()) return true;
+      await new Promise(function (resolve) { setTimeout(resolve, 1500); });
+    }
+    return false;
+  }
+
+  async function afterAuthSuccess() {
+    var userRes = await sb.auth.getUser();
+    var authUser = userRes.data && userRes.data.user;
+    if (!authUser) { setPhase('login'); return; }
+    var profileRes = await sb.from('profiles').select('*').eq('id', authUser.id).single();
+    var profile = profileRes.data || {};
+    var metaName = authUser.user_metadata && authUser.user_metadata.name;
+    currentUser = {
+      id: authUser.id,
+      email: authUser.email,
+      name: profile.name || metaName || authUser.email,
+      subscribed: !!profile.subscribed
+    };
+
+    var checkoutStatus = getCheckoutStatusFromUrl();
+    if (checkoutStatus === 'success' && !currentUser.subscribed) {
+      viewWrap.classList.add('landing-wrap');
+      viewWrap.innerHTML = '<div class="paywall-wrap"><p class="lp-lede">Bekrefter betalingen din, ett øyeblikk…</p></div>';
+      await waitForSubscriptionConfirmation();
+      clearCheckoutParamFromUrl();
+    } else if (checkoutStatus) {
+      clearCheckoutParamFromUrl();
+    }
+
+    DB = await loadAllDataForUser(authUser.id);
     state.view = 'dashboard';
     state.selectedPropertyId = null;
     state.selectedReportId = null;
     state.wizard = null;
-    showToast('Velkommen, ' + user.name + '.');
-    setPhase(user.subscribed ? 'app' : 'paywall');
+    showToast('Velkommen, ' + currentUser.name + '.');
+    setPhase(currentUser.subscribed ? 'app' : 'paywall');
   }
 
-  function handleLogout() {
-    clearSession();
+  async function handleLogout() {
+    await sb.auth.signOut();
     currentUser = null;
     DB = emptyData();
     state.view = 'dashboard';
@@ -439,28 +515,6 @@
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('Data eksportert som JSON.');
-  }
-
-  /* ---------------- File helpers ---------------- */
-
-  function filesToDataURLs(fileList, cb) {
-    var files = Array.prototype.slice.call(fileList);
-    if (!files.length) return cb([]);
-    var results = [];
-    var remaining = files.length;
-    files.forEach(function (file) {
-      var reader = new FileReader();
-      reader.onload = function () {
-        results.push({ name: file.name, dataUrl: reader.result, isImage: file.type.indexOf('image') === 0 });
-        remaining--;
-        if (remaining === 0) cb(results);
-      };
-      reader.onerror = function () {
-        remaining--;
-        if (remaining === 0) cb(results);
-      };
-      reader.readAsDataURL(file);
-    });
   }
 
   /* ---------------- Signature pad ---------------- */
@@ -670,14 +724,16 @@
       '</div></div>';
 
     document.getElementById('toSignup').addEventListener('click', function () { setPhase('signup'); });
-    document.getElementById('loginForm').addEventListener('submit', function (e) {
+    document.getElementById('loginForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.target);
       var email = (fd.get('email') || '').toString().trim();
       var password = (fd.get('password') || '').toString();
-      var user = Users.verify(email, password);
-      if (!user) { renderLogin('Feil e-post eller passord.'); return; }
-      logInAs(user);
+      var submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true; submitBtn.textContent = 'Logger inn…';
+      var res = await sb.auth.signInWithPassword({ email: email, password: password });
+      if (res.error) { renderLogin('Feil e-post eller passord.'); return; }
+      await afterAuthSuccess();
     });
   }
 
@@ -697,7 +753,7 @@
       '</div></div>';
 
     document.getElementById('toLogin').addEventListener('click', function () { setPhase('login'); });
-    document.getElementById('signupForm').addEventListener('submit', function (e) {
+    document.getElementById('signupForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.target);
       var name = (fd.get('name') || '').toString().trim();
@@ -707,12 +763,28 @@
         renderSignup('Fyll ut alle felt. Passord må ha minst 6 tegn.');
         return;
       }
-      if (Users.findByEmail(email)) {
-        renderSignup('Det finnes allerede en konto med denne e-postadressen.');
+      var submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true; submitBtn.textContent = 'Oppretter konto…';
+      var res = await sb.auth.signUp({
+        email: email,
+        password: password,
+        options: { data: { name: name } }
+      });
+      if (res.error) {
+        renderSignup(res.error.message);
         return;
       }
-      var user = Users.create(name, email, password);
-      logInAs(user);
+      if (!res.data.session) {
+        // E-postbekreftelse er påslått i Supabase-prosjektet — bruker må bekrefte før innlogging fungerer.
+        viewWrap.innerHTML = '<div class="auth-wrap"><div class="auth-card">' +
+          '<h1>Sjekk e-posten din</h1>' +
+          '<p class="lp-lede">Vi har sendt en bekreftelseslenke til ' + escapeHtml(email) + '. Klikk på lenken for å aktivere kontoen, og logg deretter inn.</p>' +
+          '<p class="auth-switch"><a id="toLoginConfirm">Til innlogging</a></p>' +
+        '</div></div>';
+        document.getElementById('toLoginConfirm').addEventListener('click', function () { setPhase('login'); });
+        return;
+      }
+      await afterAuthSuccess();
     });
   }
 
@@ -729,11 +801,16 @@
         pricingCardReplace() +
       '</div>';
 
-    document.getElementById('activateSub').addEventListener('click', function () {
-      Users.setSubscribed(currentUser.id, 'standard');
-      showToast('Abonnement aktivert. Velkommen inn!');
-      state.view = 'dashboard';
-      setPhase('app');
+    document.getElementById('activateSub').addEventListener('click', async function () {
+      var btn = this;
+      btn.disabled = true; btn.textContent = 'Sender deg til betaling…';
+      var res = await sb.functions.invoke('create-checkout-session');
+      if (res.error || !res.data || !res.data.url) {
+        showToast('Klarte ikke å starte betaling. Prøv igjen.', 'danger');
+        btn.disabled = false; btn.textContent = 'Gå til betaling';
+        return;
+      }
+      window.location.href = res.data.url;
     });
   }
 
@@ -748,8 +825,8 @@
         '<li>Digitale inspeksjoner med signatur</li>' +
         '<li>Automatiske PDF-rapporter</li>' +
       '</ul>' +
-      '<button class="btn btn-primary btn-block" id="activateSub">Aktiver abonnement</button>' +
-      '<p class="demo-note">Demo-modus: dette er en simulert betaling, ingen kort blir belastet. I en skarp versjon kobles dette til en betalingsleverandør som Stripe eller Vipps.</p>' +
+      '<button class="btn btn-primary btn-block" id="activateSub">Gå til betaling</button>' +
+      '<p class="demo-note">Du sendes til Stripes sikre betalingsside. Kortopplysninger lagres aldri hos oss.</p>' +
     '</div></div>';
   }
 
@@ -961,13 +1038,13 @@
     if (e.photos && e.photos.length) {
       html += '<div class="thumb-strip">';
       e.photos.forEach(function (ph) {
-        html += '<img class="thumb" src="' + ph.dataUrl + '" alt="Bilde: ' + escapeHtml(ph.name) + '" data-action="view-photo">';
+        html += '<img class="thumb" src="' + ph.url + '" alt="Bilde: ' + escapeHtml(ph.name) + '" data-action="view-photo">';
       });
       html += '</div>';
     }
     if (e.documents && e.documents.length) {
       e.documents.forEach(function (doc) {
-        html += '<span class="doc-chip">' + escapeHtml(doc.name) + '</span>';
+        html += '<a class="doc-chip" href="' + doc.url + '" target="_blank" rel="noopener">' + escapeHtml(doc.name) + '</a>';
       });
     }
 
@@ -988,25 +1065,33 @@
 
   function bindTimelineActions() {
     viewWrap.querySelectorAll('[data-action="mark-resolved"]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        Entries.update(btn.dataset.id, { status: 'løst' });
-        showToast('Merket som løst.');
-        render();
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        try {
+          await Entries.update(btn.dataset.id, { status: 'løst' });
+          showToast('Merket som løst.');
+          render();
+        } catch (err) { btn.disabled = false; }
       });
     });
     viewWrap.querySelectorAll('[data-action="mark-unresolved"]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        Entries.update(btn.dataset.id, { status: 'åpen' });
-        showToast('Gjenåpnet.');
-        render();
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        try {
+          await Entries.update(btn.dataset.id, { status: 'åpen' });
+          showToast('Gjenåpnet.');
+          render();
+        } catch (err) { btn.disabled = false; }
       });
     });
     viewWrap.querySelectorAll('[data-action="delete-entry"]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', async function () {
         if (confirm('Slette denne hendelsen? Dette kan ikke angres.')) {
-          Entries.remove(btn.dataset.id);
-          showToast('Hendelse slettet.');
-          render();
+          try {
+            await Entries.remove(btn.dataset.id);
+            showToast('Hendelse slettet.');
+            render();
+          } catch (err) { /* toast already shown */ }
         }
       });
     });
@@ -1017,9 +1102,10 @@
 
   function confirmDeleteProperty(p) {
     if (confirm('Slette "' + p.name + '"? All logg, vedlikehold og inspeksjoner for boligen slettes samtidig.')) {
-      Properties.remove(p.id);
-      showToast('Bolig slettet.');
-      setView('properties');
+      Properties.remove(p.id).then(function () {
+        showToast('Bolig slettet.');
+        setView('properties');
+      }).catch(function () { /* toast already shown */ });
     }
   }
 
@@ -1051,7 +1137,7 @@
     modalEl.querySelector('[data-action="close-modal"]').addEventListener('click', closeModal);
     modalEl.querySelectorAll('[data-action="close-modal"]').forEach(function (b) { b.addEventListener('click', closeModal); });
 
-    modalEl.querySelector('#propertyForm').addEventListener('submit', function (e) {
+    modalEl.querySelector('#propertyForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.target);
       var name = (fd.get('name') || '').toString().trim();
@@ -1062,18 +1148,23 @@
         rooms: (fd.get('rooms') || '').toString().trim(),
         tenantName: (fd.get('tenantName') || '').toString().trim()
       };
-      if (isEdit) {
-        Properties.update(p.id, payload);
-        showToast('Bolig oppdatert.');
-      } else {
-        var created = Properties.add(payload);
-        showToast('Bolig registrert.');
-        closeModal();
-        setView('property-detail', { propertyId: created.id });
-        return;
+      var submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true; submitBtn.textContent = 'Lagrer…';
+      try {
+        if (isEdit) {
+          await Properties.update(p.id, payload);
+          showToast('Bolig oppdatert.');
+          closeModal();
+          render();
+        } else {
+          var created = await Properties.add(payload);
+          showToast('Bolig registrert.');
+          closeModal();
+          setView('property-detail', { propertyId: created.id });
+        }
+      } catch (err) {
+        submitBtn.disabled = false; submitBtn.textContent = isEdit ? 'Lagre endringer' : 'Registrer bolig';
       }
-      closeModal();
-      render();
     });
   }
 
@@ -1148,23 +1239,26 @@
     modalEl.querySelectorAll('[data-action="close-modal"]').forEach(function (b) { b.addEventListener('click', closeModal); });
 
     modalEl.querySelector('#ef-photos').addEventListener('change', function (e) {
-      filesToDataURLs(e.target.files, function (results) {
-        pendingPhotos = pendingPhotos.concat(results.filter(function (r) { return r.isImage; }));
-        renderPhotoPreview();
+      Array.prototype.forEach.call(e.target.files, function (file) {
+        if (file.type.indexOf('image') !== 0) return;
+        pendingPhotos.push({ file: file, name: file.name, previewUrl: URL.createObjectURL(file) });
       });
+      renderPhotoPreview();
+      e.target.value = '';
     });
     modalEl.querySelector('#ef-docs').addEventListener('change', function (e) {
-      filesToDataURLs(e.target.files, function (results) {
-        pendingDocs = pendingDocs.concat(results);
-        renderDocPreview();
+      Array.prototype.forEach.call(e.target.files, function (file) {
+        pendingDocs.push({ file: file, name: file.name });
       });
+      renderDocPreview();
+      e.target.value = '';
     });
 
     function renderPhotoPreview() {
       var el = modalEl.querySelector('#ef-photo-preview');
       if (!el) return;
       el.innerHTML = pendingPhotos.map(function (p, i) {
-        return '<span class="thumb-wrap"><img class="thumb" src="' + p.dataUrl + '" alt="' + escapeHtml(p.name) + '">' +
+        return '<span class="thumb-wrap"><img class="thumb" src="' + p.previewUrl + '" alt="' + escapeHtml(p.name) + '">' +
           '<button type="button" class="thumb-remove" data-action="remove-photo" data-idx="' + i + '" aria-label="Fjern bilde">&times;</button></span>';
       }).join('');
       el.querySelectorAll('[data-action="remove-photo"]').forEach(function (btn) {
@@ -1189,26 +1283,35 @@
       });
     }
 
-    modalEl.querySelector('#entryForm').addEventListener('submit', function (e) {
+    modalEl.querySelector('#entryForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.target);
       var title = (fd.get('title') || '').toString().trim();
       if (!title) { showToast('Tittel må fylles ut.', 'danger'); return; }
-      var payload = {
-        propertyId: fd.get('propertyId'),
-        type: fd.get('type'),
-        title: title,
-        description: (fd.get('description') || '').toString().trim(),
-        date: fd.get('date') || todayISO(),
-        cost: fd.get('cost') ? Number(fd.get('cost')) : 0,
-        status: fd.get('status'),
-        photos: pendingPhotos,
-        documents: pendingDocs
-      };
-      Entries.add(payload);
-      showToast('Hendelse lagret.');
-      closeModal();
-      render();
+      var propertyId = fd.get('propertyId');
+      var submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true; submitBtn.textContent = 'Laster opp…';
+      try {
+        var uploadedPhotos = await uploadFiles('photos', pendingPhotos, propertyId);
+        var uploadedDocs = await uploadFiles('documents', pendingDocs, propertyId);
+        var payload = {
+          propertyId: propertyId,
+          type: fd.get('type'),
+          title: title,
+          description: (fd.get('description') || '').toString().trim(),
+          date: fd.get('date') || todayISO(),
+          cost: fd.get('cost') ? Number(fd.get('cost')) : 0,
+          status: fd.get('status'),
+          photos: uploadedPhotos,
+          documents: uploadedDocs
+        };
+        await Entries.add(payload);
+        showToast('Hendelse lagret.');
+        closeModal();
+        render();
+      } catch (err) {
+        submitBtn.disabled = false; submitBtn.textContent = 'Lagre hendelse';
+      }
     });
   }
 
@@ -1327,18 +1430,23 @@
     if (addBtn) addBtn.addEventListener('click', function () { openMaintenanceForm({}); });
 
     viewWrap.querySelectorAll('[data-action="complete-maint"]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        Maintenance.update(btn.dataset.id, { status: 'utført' });
-        showToast('Vedlikehold merket som utført.');
-        render();
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        try {
+          await Maintenance.update(btn.dataset.id, { status: 'utført' });
+          showToast('Vedlikehold merket som utført.');
+          render();
+        } catch (err) { btn.disabled = false; }
       });
     });
     viewWrap.querySelectorAll('[data-action="delete-maint"]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', async function () {
         if (confirm('Slette denne vedlikeholdsoppgaven?')) {
-          Maintenance.remove(btn.dataset.id);
-          showToast('Slettet.');
-          render();
+          try {
+            await Maintenance.remove(btn.dataset.id);
+            showToast('Slettet.');
+            render();
+          } catch (err) { /* toast already shown */ }
         }
       });
     });
@@ -1369,21 +1477,27 @@
       '</form>';
     openModal(html);
     modalEl.querySelectorAll('[data-action="close-modal"]').forEach(function (b) { b.addEventListener('click', closeModal); });
-    modalEl.querySelector('#maintForm').addEventListener('submit', function (e) {
+    modalEl.querySelector('#maintForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.target);
       var title = (fd.get('title') || '').toString().trim();
       if (!title) { showToast('Oppgave må fylles ut.', 'danger'); return; }
-      Maintenance.add({
-        propertyId: fd.get('propertyId'),
-        title: title,
-        dueDate: fd.get('dueDate') || todayISO(),
-        recurring: fd.get('recurring'),
-        notes: (fd.get('notes') || '').toString().trim()
-      });
-      showToast('Vedlikehold planlagt.');
-      closeModal();
-      render();
+      var submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true; submitBtn.textContent = 'Lagrer…';
+      try {
+        await Maintenance.add({
+          propertyId: fd.get('propertyId'),
+          title: title,
+          dueDate: fd.get('dueDate') || todayISO(),
+          recurring: fd.get('recurring'),
+          notes: (fd.get('notes') || '').toString().trim()
+        });
+        showToast('Vedlikehold planlagt.');
+        closeModal();
+        render();
+      } catch (err) {
+        submitBtn.disabled = false; submitBtn.textContent = 'Lagre';
+      }
     });
   }
 
@@ -1470,7 +1584,7 @@
         '<div class="form-field"><textarea data-action="room-notes" data-idx="' + idx + '" placeholder="Notater om tilstand, skader eller merknader">' + escapeHtml(room.notes) + '</textarea></div>' +
         '<label class="file-drop" for="room-photo-' + idx + '">Last opp bilde<input id="room-photo-' + idx + '" type="file" accept="image/*" multiple data-action="room-photo" data-idx="' + idx + '"></label>' +
         '<div class="thumb-strip">' + room.photos.map(function (p, pidx) {
-          return '<span class="thumb-wrap"><img class="thumb" src="' + p.dataUrl + '" alt="">' +
+          return '<span class="thumb-wrap"><img class="thumb" src="' + p.previewUrl + '" alt="">' +
             '<button type="button" class="thumb-remove" data-action="remove-room-photo" data-room-idx="' + idx + '" data-photo-idx="' + pidx + '" aria-label="Fjern bilde">&times;</button></span>';
         }).join('') + '</div>' +
       '</div>';
@@ -1537,10 +1651,11 @@
       viewWrap.querySelectorAll('[data-action="room-photo"]').forEach(function (input) {
         input.addEventListener('change', function () {
           var idx = Number(input.dataset.idx);
-          filesToDataURLs(input.files, function (results) {
-            w.rooms[idx].photos = w.rooms[idx].photos.concat(results.filter(function (r) { return r.isImage; }));
-            render();
+          Array.prototype.forEach.call(input.files, function (file) {
+            if (file.type.indexOf('image') !== 0) return;
+            w.rooms[idx].photos.push({ file: file, name: file.name, previewUrl: URL.createObjectURL(file) });
           });
+          render();
         });
       });
       viewWrap.querySelectorAll('[data-action="remove-room"]').forEach(function (btn) {
@@ -1581,25 +1696,37 @@
       viewWrap.querySelectorAll('[data-action="clear-sig"]').forEach(function (btn) {
         btn.addEventListener('click', function () { sigPads[btn.dataset.target].clear(); });
       });
-      viewWrap.querySelector('[data-action="wizard-finish"]').addEventListener('click', function () {
+      viewWrap.querySelector('[data-action="wizard-finish"]').addEventListener('click', async function () {
         if (sigPads.tenant.isEmpty() || sigPads.landlord.isEmpty()) {
           showToast('Begge signaturer må fylles ut.', 'danger');
           return;
         }
-        w.tenantSignature = sigPads.tenant.toDataURL();
-        w.landlordSignature = sigPads.landlord.toDataURL();
-        var saved = Inspections.add({
-          propertyId: w.propertyId,
-          type: w.type,
-          tenantName: w.tenantName,
-          date: w.date,
-          rooms: w.rooms,
-          tenantSignature: w.tenantSignature,
-          landlordSignature: w.landlordSignature
-        });
-        state.wizard = null;
-        showToast('Inspeksjon fullført. Rapport generert.');
-        setView('report-detail', { reportId: saved.id });
+        var btn = this;
+        btn.disabled = true; btn.textContent = 'Lagrer inspeksjon…';
+        try {
+          w.tenantSignature = sigPads.tenant.toDataURL();
+          w.landlordSignature = sigPads.landlord.toDataURL();
+          var roomsForSave = [];
+          for (var i = 0; i < w.rooms.length; i++) {
+            var room = w.rooms[i];
+            var uploadedPhotos = await uploadFiles('photos', room.photos, w.propertyId);
+            roomsForSave.push({ name: room.name, condition: room.condition, notes: room.notes, photos: uploadedPhotos });
+          }
+          var saved = await Inspections.add({
+            propertyId: w.propertyId,
+            type: w.type,
+            tenantName: w.tenantName,
+            date: w.date,
+            rooms: roomsForSave,
+            tenantSignature: w.tenantSignature,
+            landlordSignature: w.landlordSignature
+          });
+          state.wizard = null;
+          showToast('Inspeksjon fullført. Rapport generert.');
+          setView('report-detail', { reportId: saved.id });
+        } catch (err) {
+          btn.disabled = false; btn.textContent = 'Fullfør og generer rapport';
+        }
       });
     }
   }
@@ -1656,7 +1783,7 @@
       html += '<div class="report-room">' +
         '<div class="report-room-head"><h4>' + escapeHtml(room.name) + '</h4>' + conditionBadgeStatic(room.condition) + '</div>' +
         (room.notes ? '<p class="report-room-notes">' + escapeHtml(room.notes) + '</p>' : '') +
-        (room.photos && room.photos.length ? '<div class="thumb-strip">' + room.photos.map(function (p) { return '<img class="thumb" src="' + p.dataUrl + '" alt="" style="width:64px;height:64px;">'; }).join('') + '</div>' : '') +
+        (room.photos && room.photos.length ? '<div class="thumb-strip">' + room.photos.map(function (p) { return '<img class="thumb" src="' + p.url + '" alt="" style="width:64px;height:64px;">'; }).join('') + '</div>' : '') +
       '</div>';
     });
 
@@ -1670,11 +1797,13 @@
     viewWrap.innerHTML = html;
     viewWrap.querySelector('[data-action="back-to-reports"]').addEventListener('click', function () { setView('reports'); });
     viewWrap.querySelector('[data-action="print-report"]').addEventListener('click', function () { window.print(); });
-    viewWrap.querySelector('[data-action="delete-report"]').addEventListener('click', function () {
+    viewWrap.querySelector('[data-action="delete-report"]').addEventListener('click', async function () {
       if (confirm('Slette denne rapporten?')) {
-        Inspections.remove(insp.id);
-        showToast('Rapport slettet.');
-        setView('reports');
+        try {
+          await Inspections.remove(insp.id);
+          showToast('Rapport slettet.');
+          setView('reports');
+        } catch (err) { /* toast already shown */ }
       }
     });
   }
@@ -1692,34 +1821,35 @@
   /* ---------------- Demo data ---------------- */
 
   function seedDemoData() {
-    var prop = Properties.add({ name: 'H0304 — Storgata 12', address: 'Storgata 12, 4611 Kristiansand', rooms: '3', tenantName: 'Kari Nordmann' });
-    Entries.add({ propertyId: prop.id, type: 'feil', title: 'Vannlekkasje ved kjøkkenvask', description: 'Leietaker meldte om dryppende rør under vasken.', date: todayISO(), status: 'åpen', cost: 0, photos: [], documents: [] });
-    Entries.add({ propertyId: prop.id, type: 'vedlikehold', title: 'Service på varmepumpe', description: 'Årlig service utført av Kulde & Varme AS.', date: todayISO(), status: 'løst', cost: 1450, photos: [], documents: [] });
-    Maintenance.add({ propertyId: prop.id, title: 'Rens av takrenner', dueDate: todayISO(), recurring: 'Årlig', notes: 'Utføres før vinteren.' });
-    showToast('Eksempeldata lastet inn.');
-    render();
+    (async function () {
+      try {
+        var prop = await Properties.add({ name: 'H0304 — Storgata 12', address: 'Storgata 12, 4611 Kristiansand', rooms: '3', tenantName: 'Kari Nordmann' });
+        await Entries.add({ propertyId: prop.id, type: 'feil', title: 'Vannlekkasje ved kjøkkenvask', description: 'Leietaker meldte om dryppende rør under vasken.', date: todayISO(), status: 'åpen', cost: 0, photos: [], documents: [] });
+        await Entries.add({ propertyId: prop.id, type: 'vedlikehold', title: 'Service på varmepumpe', description: 'Årlig service utført av Kulde & Varme AS.', date: todayISO(), status: 'løst', cost: 1450, photos: [], documents: [] });
+        await Maintenance.add({ propertyId: prop.id, title: 'Rens av takrenner', dueDate: todayISO(), recurring: 'Årlig', notes: 'Utføres før vinteren.' });
+        showToast('Eksempeldata lastet inn.');
+        render();
+      } catch (err) { /* toast already shown by the failing call */ }
+    })();
   }
 
   /* ---------------- Init ---------------- */
 
   function initApp() {
-    var sessionUserId = getSessionUserId();
-    if (sessionUserId) {
-      var user = Users.get(sessionUserId);
-      if (user) {
-        currentUser = user;
-        DB = loadDataForUser(user.id);
-        phase = user.subscribed ? 'app' : 'paywall';
+    viewWrap.classList.add('landing-wrap');
+    viewWrap.innerHTML = '<div class="paywall-wrap"><p class="lp-lede">Laster…</p></div>';
+    (async function () {
+      var sessionRes = await sb.auth.getSession();
+      var session = sessionRes.data && sessionRes.data.session;
+      if (session) {
+        await afterAuthSuccess();
       } else {
-        clearSession();
         phase = 'landing';
+        applyViewWrapClass();
+        renderHeader();
+        renderPhaseView();
       }
-    } else {
-      phase = 'landing';
-    }
-    applyViewWrapClass();
-    renderHeader();
-    renderPhaseView();
+    })();
   }
 
   initApp();
