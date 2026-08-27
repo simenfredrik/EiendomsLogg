@@ -13,8 +13,8 @@
      SUPABASE CONFIG — fyll inn dine egne verdier her
      Project Settings → API i Supabase-dashbordet.
      ================================================================ */
-  var SUPABASE_URL = 'https://kvbnmdjrdgeqfaagmjgt.supabase.co';
-  var SUPABASE_ANON_KEY = 'sb_publishable_MNuDMBcXuYAa1PmpYKcMHg_s_timlb3';
+  var SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+  var SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
 
   var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -732,7 +732,7 @@
       var submitBtn = e.target.querySelector('button[type="submit"]');
       submitBtn.disabled = true; submitBtn.textContent = 'Logger inn…';
       var res = await sb.auth.signInWithPassword({ email: email, password: password });
-      if (res.error) { renderLogin('Feil e-post eller passord.'); return; }
+      if (res.error) { renderLogin(res.error.message); return; }
       await afterAuthSuccess();
     });
   }
