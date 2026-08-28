@@ -589,8 +589,8 @@
   function iconClock() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>'; }
   function stampSvg() {
     return '<svg viewBox="0 0 100 100" width="72" height="72"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
-      '<text x="50" y="44" text-anchor="middle" font-family="\'JetBrains Mono\', monospace" font-size="10.5" font-weight="600" fill="currentColor">GODKJENT</text>' +
-      '<text x="50" y="64" text-anchor="middle" font-family="\'JetBrains Mono\', monospace" font-size="8" fill="currentColor">' + todayISO().split('-').reverse().join('.') + '</text></svg>';
+      '<text x="50" y="44" text-anchor="middle" font-family="\'IBM Plex Mono\', monospace" font-size="10.5" font-weight="600" fill="currentColor">GODKJENT</text>' +
+      '<text x="50" y="64" text-anchor="middle" font-family="\'IBM Plex Mono\', monospace" font-size="8" fill="currentColor">' + todayISO().split('-').reverse().join('.') + '</text></svg>';
   }
 
   /* ================================================================
@@ -598,36 +598,29 @@
      ================================================================ */
 
   function heroIllustrationHtml() {
-    return '<div class="plan-visual" aria-hidden="true">' +
-      '<div class="plan-frame">' +
-        '<div class="plan-canvas">' +
-          '<svg class="plan-svg" viewBox="0 0 480 380" xmlns="http://www.w3.org/2000/svg">' +
-            '<line x1="40" y1="26" x2="440" y2="26" stroke="var(--plan-line)" stroke-width="1"/>' +
-            '<line x1="40" y1="22" x2="40" y2="30" stroke="var(--plan-line)" stroke-width="1"/>' +
-            '<line x1="440" y1="22" x2="440" y2="30" stroke="var(--plan-line)" stroke-width="1"/>' +
-            '<text class="plan-dim-text" x="240" y="18">10,0 M</text>' +
-            '<line x1="24" y1="40" x2="24" y2="340" stroke="var(--plan-line)" stroke-width="1"/>' +
-            '<line x1="20" y1="40" x2="28" y2="40" stroke="var(--plan-line)" stroke-width="1"/>' +
-            '<line x1="20" y1="340" x2="28" y2="340" stroke="var(--plan-line)" stroke-width="1"/>' +
-            '<text class="plan-dim-text" x="14" y="193" transform="rotate(-90 14 193)">7,5 M</text>' +
-            '<rect x="40" y="40" width="220" height="160" fill="none" stroke="var(--plan-line)" stroke-width="1.2"/>' +
-            '<rect x="260" y="40" width="180" height="160" fill="none" stroke="var(--plan-line)" stroke-width="1.2"/>' +
-            '<rect x="40" y="200" width="400" height="60" fill="none" stroke="var(--plan-line)" stroke-width="1.2"/>' +
-            '<rect x="40" y="260" width="180" height="80" fill="none" stroke="var(--plan-line)" stroke-width="1.2"/>' +
-            '<rect x="220" y="260" width="220" height="80" fill="none" stroke="var(--plan-line)" stroke-width="1.2"/>' +
-            '<rect x="40" y="40" width="400" height="300" fill="none" stroke="var(--plan-line)" stroke-width="2.4"/>' +
-            '<text class="plan-room-label" x="150" y="66">STUE</text>' +
-            '<text class="plan-room-label" x="350" y="66">KJØKKEN</text>' +
-            '<text class="plan-room-label" x="240" y="234">GANG</text>' +
-            '<text class="plan-room-label" x="130" y="286">BAD</text>' +
-            '<text class="plan-room-label" x="330" y="286">SOVEROM</text>' +
-          '</svg>' +
-          '<div class="plan-tag" style="left:24%; top:68%; transform:translate(-50%,0);"><span class="plan-tag-dot"></span>Inspeksjon fullført</div>' +
-          '<div class="plan-tag" style="left:76%; top:16%; transform:translate(-50%,0);"><span class="plan-tag-dot warn"></span>Lekkasje meldt · 12.03</div>' +
-          '<div class="plan-tag" style="left:74%; top:84%; transform:translate(-50%,0);"><span class="plan-tag-dot"></span>Signert av begge parter</div>' +
+    return '<div class="hero-visual" aria-hidden="true">' +
+      '<div class="hv-tabs"><span class="hv-tab">H0101</span><span class="hv-tab">H0203</span><span class="hv-tab active">H0304</span></div>' +
+      '<div class="hv-card-stack">' +
+        '<div class="hv-card hv-receipt">' +
+          '<div class="hv-card-head">KVITTERING #0451</div>' +
+          '<div class="hv-receipt-line"><span>Rørlegger — bad H0304</span><span>kr 1 250</span></div>' +
+          '<div class="hv-receipt-line"><span>Nytt sluk + tetting</span><span>kr 890</span></div>' +
+          '<div class="hv-receipt-rule"></div>' +
+          '<div class="hv-receipt-line total"><span>Totalt</span><span>kr 2 140</span></div>' +
+          '<div class="hv-receipt-date mono">12.03.2026</div>' +
+        '</div>' +
+        '<div class="hv-card hv-photo">' +
+          '<div class="hv-photo-thumb">' + iconCameraSmall() + '</div>' +
+          '<div class="hv-photo-meta"><p class="hv-photo-tag">BAD · H0304</p><p>Vannskade ved sluk, dokumentert før reparasjon</p></div>' +
+        '</div>' +
+        '<div class="hv-card hv-report">' +
+          '<div class="hv-stamp">' + stampSvg() + '</div>' +
+          '<div class="hv-card-head">UTFLYTTINGSRAPPORT</div>' +
+          '<p class="hv-report-line">Leilighet H0304 — 3 rom</p>' +
+          '<p class="hv-report-line muted">6 bilder · 0 avvik registrert</p>' +
+          '<div class="hv-sign-row"><span>Signatur</span><span class="hv-sign-line"></span></div>' +
         '</div>' +
       '</div>' +
-      '<p class="plan-caption">H0304 · Storgata 12 · registrert i EiendomsLogg</p>' +
     '</div>';
   }
 
