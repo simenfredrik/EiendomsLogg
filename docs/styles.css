@@ -31,6 +31,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .reveal { opacity: 1 !important; transform: none !important; }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 html, body { height: 100%; }
@@ -145,10 +156,11 @@ textarea:focus-visible {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; background: var(--stamp); color: var(--paper);
   border-radius: 6px; font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  flex-shrink: 0;
 }
 .logo-word { font-family: var(--font-display); font-weight: 700; font-size: 17px; }
 .logo-word em { color: var(--stamp); font-style: normal; }
-.header-actions { display: flex; gap: 10px; }
+.header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
 .tab-nav {
   max-width: var(--wrap);
@@ -241,6 +253,22 @@ textarea:focus-visible {
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius-lg);
 }
+.empty-state::before {
+  content: '';
+  display: block;
+  width: 38px; height: 38px;
+  margin: 0 auto 16px;
+  background-color: var(--muted);
+  opacity: 0.5;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M3 12h4l2 3h6l2-3h4'/%3E%3Cpath d='M5 12V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6'/%3E%3Crect x='3' y='12' width='18' height='7' rx='2'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M3 12h4l2 3h6l2-3h4'/%3E%3Cpath d='M5 12V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6'/%3E%3Crect x='3' y='12' width='18' height='7' rx='2'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
 .empty-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 6px; }
 .empty-body { color: var(--muted); margin-bottom: 20px; }
 
@@ -296,6 +324,7 @@ textarea:focus-visible {
    Tables / lists
    ============================================ */
 .data-table { width: 100%; border-collapse: collapse; }
+.card:has(.data-table) { overflow-x: auto; }
 .data-table th {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -575,6 +604,16 @@ textarea:focus-visible {
   .auth-card { padding: 28px 22px; }
 }
 
+@media (max-width: 480px) {
+  .account-name { display: none; }
+  .account-pill { padding: 4px; border: none; }
+  .stat-grid { grid-template-columns: 1fr; }
+  .condition-select-row { flex-wrap: wrap; }
+  .condition-pill { min-width: 80px; }
+  .view-head h1 { font-size: 1.55rem; }
+  .signature-pad { height: 130px; }
+}
+
 /* ============================================================
    MARKETING HEADER (landing / login / signup / paywall)
    ============================================================ */
@@ -686,7 +725,13 @@ textarea:focus-visible {
 
 /* Feature list (compact) */
 .lp-feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
-.lp-feature-card { background: var(--ink-2); padding: 26px 24px; }
+.lp-feature-card { background: var(--ink-2); padding: 26px 24px; transition: background 0.2s ease; }
+.lp-feature-card:hover { background: var(--ink-3); }
+.lp-feature-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: rgba(143,163,130,0.14); color: var(--sage);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 14px;
+}
 .lp-feature-card h3 { font-size: 16px; margin-bottom: 6px; }
 .lp-feature-card p { color: var(--muted); font-size: 14px; margin: 0; }
 

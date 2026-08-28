@@ -447,7 +447,7 @@
           '<div class="header-actions">' +
             '<button class="btn btn-ghost btn-small" id="exportBtn" type="button"><span class="full-label">Eksporter data</span></button>' +
             '<button class="btn btn-primary btn-small" id="quickAddBtn" type="button">+ Ny hendelse</button>' +
-            '<span class="account-pill"><span class="account-avatar">' + escapeHtml(initials) + '</span>' + escapeHtml(currentUser ? currentUser.name : '') + '</span>' +
+            '<span class="account-pill"><span class="account-avatar">' + escapeHtml(initials) + '</span><span class="account-name">' + escapeHtml(currentUser ? currentUser.name : '') + '</span></span>' +
             '<button class="btn btn-ghost btn-small" id="logoutBtn" type="button">Logg ut</button>' +
           '</div>' +
         '</div>' +
@@ -584,6 +584,9 @@
   function iconDoc() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h9l4 4v16H6z"/><path d="M14 2v5h5"/><path d="M9 13h6M9 17h6"/></svg>'; }
   function iconCameraSmall() { return '<svg viewBox="0 0 48 48" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="12" width="36" height="26" rx="2"/><circle cx="24" cy="25" r="7"/><path d="M17 12l2.5-4h9L31 12"/></svg>'; }
   function iconLock() { return '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'; }
+  function iconImage() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16.5l-5.5-5.5L7 19"/></svg>'; }
+  function iconCalendar() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>'; }
+  function iconClock() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>'; }
   function stampSvg() {
     return '<svg viewBox="0 0 100 100" width="72" height="72"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
       '<text x="50" y="44" text-anchor="middle" font-family="\'IBM Plex Mono\', monospace" font-size="10.5" font-weight="600" fill="currentColor">GODKJENT</text>' +
@@ -625,8 +628,8 @@
     return '<div class="how-step"><div class="how-step-icon">' + iconHtml + '</div><p class="how-step-num mono">STEG ' + num + '</p><h3>' + title + '</h3><p>' + body + '</p></div>';
   }
 
-  function lpFeature(title, body) {
-    return '<div class="lp-feature-card"><h3>' + title + '</h3><p>' + body + '</p></div>';
+  function lpFeature(title, body, iconHtml) {
+    return '<div class="lp-feature-card"><div class="lp-feature-icon">' + iconHtml + '</div><h3>' + title + '</h3><p>' + body + '</p></div>';
   }
 
   function pricingCardHtml(buttonId, buttonLabel) {
@@ -662,7 +665,7 @@
       heroIllustrationHtml() +
     '</div></section>';
 
-    html += '<section class="lp-section tinted" id="slik-fungerer-det"><div class="lp-inner">' +
+    html += '<section class="lp-section tinted reveal" id="slik-fungerer-det"><div class="lp-inner">' +
       '<p class="eyebrow">SLIK FUNGERER DET</p>' +
       '<h2>Fra registrert bolig til ferdig rapport</h2>' +
       '<p class="lp-lede">Fire steg som dekker det meste en utleier trenger å holde styr på gjennom hele leieforholdet.</p>' +
@@ -674,20 +677,20 @@
       '</div>' +
     '</div></section>';
 
-    html += '<section class="lp-section"><div class="lp-inner">' +
+    html += '<section class="lp-section reveal"><div class="lp-inner">' +
       '<p class="eyebrow">ALT PÅ ETT STED</p><h2>Bygget rundt hvordan en bolig faktisk driftes</h2>' +
       '<p class="lp-lede">Seks moduler som dekker det meste en utleier trenger å holde styr på.</p>' +
       '<div class="lp-feature-grid">' +
-        lpFeature('Feilregistrering', 'Det leietaker melder om forsvinner ikke i en tekstmelding du ikke finner igjen — skriv det inn på et minutt, med status fra meldt til utbedret.') +
-        lpFeature('Bilder og dokumenter', 'Last opp bilder, kontrakter og kvitteringer, søkbart i ettertid.') +
-        lpFeature('Vedlikeholdsplan', 'Planlegg service og sesongvedlikehold, få varsel før noe forfaller.') +
-        lpFeature('Digital inspeksjon', 'Gjennomfør inn- og utflyttingskontroller på mobilen, med signatur på stedet.') +
-        lpFeature('Automatiske rapporter', 'Inspeksjoner blir til ferdige rapporter, klare til å sendes eller arkiveres.') +
-        lpFeature('Historikk per bolig', 'Se hele livsløpet til hver leilighet — hva som er gjort, når og hva det kostet.') +
+        lpFeature('Feilregistrering', 'Det leietaker melder om forsvinner ikke i en tekstmelding du ikke finner igjen — skriv det inn på et minutt, med status fra meldt til utbedret.', iconClipboard()) +
+        lpFeature('Bilder og dokumenter', 'Last opp bilder, kontrakter og kvitteringer, søkbart i ettertid.', iconImage()) +
+        lpFeature('Vedlikeholdsplan', 'Planlegg service og sesongvedlikehold, få varsel før noe forfaller.', iconCalendar()) +
+        lpFeature('Digital inspeksjon', 'Gjennomfør inn- og utflyttingskontroller på mobilen, med signatur på stedet.', iconCamera()) +
+        lpFeature('Automatiske rapporter', 'Inspeksjoner blir til ferdige rapporter, klare til å sendes eller arkiveres.', iconDoc()) +
+        lpFeature('Historikk per bolig', 'Se hele livsløpet til hver leilighet — hva som er gjort, når og hva det kostet.', iconClock()) +
       '</div>' +
     '</div></section>';
 
-    html += '<section class="lp-section tinted" id="priser"><div class="lp-inner" style="text-align:center;">' +
+    html += '<section class="lp-section tinted reveal" id="priser"><div class="lp-inner" style="text-align:center;">' +
       '<p class="eyebrow" style="text-align:center;">PRISER</p><h2 style="margin-left:auto;margin-right:auto;">Ett abonnement, alt inkludert</h2>' +
       '<p class="lp-lede" style="margin-left:auto;margin-right:auto;text-align:center;">Ingen skjulte kostnader. Legg til så mange boliger du trenger.</p>' +
       pricingCardHtml('pricingCta', 'Kom i gang') +
@@ -703,6 +706,26 @@
     if (heroCta) heroCta.addEventListener('click', function () { setPhase(currentUser ? 'paywall' : 'signup'); });
     var pricingCta = document.getElementById('pricingCta');
     if (pricingCta) pricingCta.addEventListener('click', function () { setPhase(currentUser ? 'paywall' : 'signup'); });
+
+    initRevealObserver();
+  }
+
+  function initRevealObserver() {
+    var targets = viewWrap.querySelectorAll('.reveal');
+    if (!targets.length) return;
+    if (!('IntersectionObserver' in window)) {
+      targets.forEach(function (el) { el.classList.add('reveal-visible'); });
+      return;
+    }
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('reveal-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    targets.forEach(function (el) { observer.observe(el); });
   }
 
   /* ================================================================
