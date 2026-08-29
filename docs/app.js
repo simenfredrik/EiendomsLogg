@@ -642,7 +642,7 @@
   function pricingCardHtml(buttonId, buttonLabel) {
     return '<div class="pricing-wrap"><div class="pricing-card">' +
       '<span class="pricing-badge">ABONNEMENT</span>' +
-      '<p class="pricing-price">299 kr<span> / måned</span></p>' +
+      '<p class="pricing-price">499 kr<span> / måned</span></p>' +
       '<p class="pricing-sub">Opptil 10 boliger. Legg til flere for 19 kr/bolig/mnd.</p>' +
       '<ul class="pricing-features">' +
         '<li>Ubegrenset feilregistrering og logg</li>' +
@@ -847,7 +847,7 @@
   function pricingCardReplace() {
     return '<div class="pricing-wrap"><div class="pricing-card">' +
       '<span class="pricing-badge">ABONNEMENT</span>' +
-      '<p class="pricing-price">299 kr<span> / måned</span></p>' +
+      '<p class="pricing-price">499 kr<span> / måned</span></p>' +
       '<p class="pricing-sub">Opptil 10 boliger. Avslutt når du vil.</p>' +
       '<ul class="pricing-features">' +
         '<li>Ubegrenset feilregistrering og logg</li>' +
