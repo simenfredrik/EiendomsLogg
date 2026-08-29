@@ -448,6 +448,7 @@
             '<button class="btn btn-ghost btn-small" id="exportBtn" type="button"><span class="full-label">Eksporter data</span></button>' +
             '<button class="btn btn-primary btn-small" id="quickAddBtn" type="button">+ Ny hendelse</button>' +
             '<span class="account-pill"><span class="account-avatar">' + escapeHtml(initials) + '</span><span class="account-name">' + escapeHtml(currentUser ? currentUser.name : '') + '</span></span>' +
+            '<button class="btn btn-ghost btn-small" id="manageSubBtn" type="button"><span class="full-label">Administrer abonnement</span></button>' +
             '<button class="btn btn-ghost btn-small" id="logoutBtn" type="button">Logg ut</button>' +
           '</div>' +
         '</div>' +
@@ -473,8 +474,22 @@
     if (quickAdd) quickAdd.addEventListener('click', function () { openEntryForm({}); });
     var exportBtn = document.getElementById('exportBtn');
     if (exportBtn) exportBtn.addEventListener('click', exportDataHandler);
+    var manageSubBtn = document.getElementById('manageSubBtn');
+    if (manageSubBtn) manageSubBtn.addEventListener('click', openBillingPortal);
     var logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+  }
+
+  async function openBillingPortal() {
+    var btn = document.getElementById('manageSubBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Åpner...'; }
+    var res = await sb.functions.invoke('create-portal-session');
+    if (res.error || !res.data || !res.data.url) {
+      showToast('Klarte ikke å åpne abonnementssiden. Prøv igjen.', 'danger');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<span class="full-label">Administrer abonnement</span>'; }
+      return;
+    }
+    window.location.href = res.data.url;
   }
 
   function marketingHeaderHtml() {
