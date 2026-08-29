@@ -643,7 +643,7 @@
     return '<div class="pricing-wrap"><div class="pricing-card">' +
       '<span class="pricing-badge">ABONNEMENT</span>' +
       '<p class="pricing-price">499 kr<span> / måned</span></p>' +
-      '<p class="pricing-sub">Opptil 10 boliger. Legg til flere for 19 kr/bolig/mnd.</p>' +
+      '<p class="pricing-sub">Ubegrenset antall boliger. Avslutt når du vil.</p>' +
       '<ul class="pricing-features">' +
         '<li>Ubegrenset feilregistrering og logg</li>' +
         '<li>Bilder, dokumenter og kvitteringer</li>' +
@@ -848,7 +848,7 @@
     return '<div class="pricing-wrap"><div class="pricing-card">' +
       '<span class="pricing-badge">ABONNEMENT</span>' +
       '<p class="pricing-price">499 kr<span> / måned</span></p>' +
-      '<p class="pricing-sub">Opptil 10 boliger. Avslutt når du vil.</p>' +
+      '<p class="pricing-sub">Ubegrenset antall boliger. Avslutt når du vil.</p>' +
       '<ul class="pricing-features">' +
         '<li>Ubegrenset feilregistrering og logg</li>' +
         '<li>Bilder, dokumenter og kvitteringer</li>' +
