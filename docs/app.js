@@ -1463,6 +1463,7 @@
           '<td>' + statusBadge(m.status) + '</td>' +
           '<td class="row-actions">' +
             (m.status !== 'utført' ? '<button class="btn btn-ghost btn-small" data-action="complete-maint" data-id="' + m.id + '">Merk utført</button>' : '') +
+            '<button class="btn btn-ghost btn-small" data-action="edit-maint" data-id="' + m.id + '">Rediger</button>' +
             '<button class="btn btn-ghost btn-small" data-action="delete-maint" data-id="' + m.id + '">Slett</button>' +
           '</td>' +
         '</tr>';
@@ -1484,6 +1485,12 @@
         } catch (err) { btn.disabled = false; }
       });
     });
+    viewWrap.querySelectorAll('[data-action="edit-maint"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var task = Maintenance.get(btn.dataset.id);
+        if (task) openMaintenanceForm({ existing: task });
+      });
+    });
     viewWrap.querySelectorAll('[data-action="delete-maint"]').forEach(function (btn) {
       btn.addEventListener('click', async function () {
         if (confirm('Slette denne vedlikeholdsoppgaven?')) {
@@ -1497,28 +1504,50 @@
     });
   }
 
+  // Brukes både til å planlegge nytt vedlikehold og til å redigere et eksisterende.
+  // Ny:        openMaintenanceForm({}) eller openMaintenanceForm({ propertyId: ... })
+  // Rediger:   openMaintenanceForm({ existing: <vedlikeholdsobjekt> })
   function openMaintenanceForm(defaults) {
     defaults = defaults || {};
+    var existing = defaults.existing || null;
+    var isEdit = !!existing;
+    var m = existing || {};
     var properties = Properties.all();
     if (properties.length === 0) { showToast('Registrer en bolig først.', 'danger'); openPropertyForm(); return; }
 
+    var selectedPropertyId = isEdit ? m.propertyId : defaults.propertyId;
     var propertyOptions = properties.map(function (p) {
-      return '<option value="' + p.id + '"' + (p.id === defaults.propertyId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
+      return '<option value="' + p.id + '"' + (p.id === selectedPropertyId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
     }).join('');
 
+    var recurValues = ['Ingen', 'Kvartalsvis', 'Halvårlig', 'Årlig'];
+    var currentRecur = m.recurring || 'Ingen';
+    // Har en eldre oppgave en verdi som ikke finnes i listen, tar vi den med slik at den ikke endres ved et uhell.
+    if (recurValues.indexOf(currentRecur) === -1) recurValues.push(currentRecur);
+    var recurOptions = recurValues.map(function (r) {
+      return '<option value="' + escapeHtml(r) + '"' + (r === currentRecur ? ' selected' : '') + '>' + escapeHtml(r) + '</option>';
+    }).join('');
+
+    // Status kan bare endres ved redigering. Da kan en oppgave som ved en feil er merket utført, settes tilbake til planlagt.
+    var statusField = isEdit
+      ? '<div class="form-field"><label for="mf-status">Status</label><select id="mf-status" name="status">' +
+          '<option value="planlagt"' + (m.status !== 'utført' ? ' selected' : '') + '>Planlagt</option>' +
+          '<option value="utført"' + (m.status === 'utført' ? ' selected' : '') + '>Utført</option>' +
+        '</select></div>'
+      : '';
+
     var html =
-      '<div class="modal-head"><h2>Planlegg vedlikehold</h2><button class="modal-close" data-action="close-modal" aria-label="Lukk">&times;</button></div>' +
+      '<div class="modal-head"><h2>' + (isEdit ? 'Rediger vedlikehold' : 'Planlegg vedlikehold') + '</h2><button class="modal-close" data-action="close-modal" aria-label="Lukk">&times;</button></div>' +
       '<form id="maintForm">' +
         '<div class="form-field"><label for="mf-property">Bolig</label><select id="mf-property" name="propertyId">' + propertyOptions + '</select></div>' +
-        '<div class="form-field"><label for="mf-title">Oppgave</label><input id="mf-title" name="title" placeholder="F.eks. Rens av takrenner" required></div>' +
+        '<div class="form-field"><label for="mf-title">Oppgave</label><input id="mf-title" name="title" value="' + escapeHtml(m.title || '') + '" placeholder="F.eks. Rens av takrenner" required></div>' +
         '<div class="form-grid">' +
-          '<div class="form-field"><label for="mf-date">Forfallsdato</label><input id="mf-date" name="dueDate" type="date" value="' + todayISO() + '"></div>' +
-          '<div class="form-field"><label for="mf-recur">Gjentakelse</label><select id="mf-recur" name="recurring">' +
-            '<option value="Ingen">Ingen</option><option value="Kvartalsvis">Kvartalsvis</option><option value="Halvårlig">Halvårlig</option><option value="Årlig">Årlig</option>' +
-          '</select></div>' +
+          '<div class="form-field"><label for="mf-date">Forfallsdato</label><input id="mf-date" name="dueDate" type="date" value="' + escapeHtml(m.dueDate || todayISO()) + '"></div>' +
+          '<div class="form-field"><label for="mf-recur">Gjentakelse</label><select id="mf-recur" name="recurring">' + recurOptions + '</select></div>' +
         '</div>' +
-        '<div class="form-field"><label for="mf-notes">Notat</label><textarea id="mf-notes" name="notes" placeholder="Detaljer om oppgaven"></textarea></div>' +
-        '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Avbryt</button><button type="submit" class="btn btn-primary">Lagre</button></div>' +
+        statusField +
+        '<div class="form-field"><label for="mf-notes">Notat</label><textarea id="mf-notes" name="notes" placeholder="Detaljer om oppgaven">' + escapeHtml(m.notes || '') + '</textarea></div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Avbryt</button><button type="submit" class="btn btn-primary">' + (isEdit ? 'Lagre endringer' : 'Lagre') + '</button></div>' +
       '</form>';
     openModal(html);
     modalEl.querySelectorAll('[data-action="close-modal"]').forEach(function (b) { b.addEventListener('click', closeModal); });
@@ -1528,20 +1557,28 @@
       var title = (fd.get('title') || '').toString().trim();
       if (!title) { showToast('Oppgave må fylles ut.', 'danger'); return; }
       var submitBtn = e.target.querySelector('button[type="submit"]');
+      var idleLabel = isEdit ? 'Lagre endringer' : 'Lagre';
       submitBtn.disabled = true; submitBtn.textContent = 'Lagrer…';
+      var payload = {
+        propertyId: fd.get('propertyId'),
+        title: title,
+        dueDate: fd.get('dueDate') || m.dueDate || todayISO(),
+        recurring: fd.get('recurring'),
+        notes: (fd.get('notes') || '').toString().trim()
+      };
       try {
-        await Maintenance.add({
-          propertyId: fd.get('propertyId'),
-          title: title,
-          dueDate: fd.get('dueDate') || todayISO(),
-          recurring: fd.get('recurring'),
-          notes: (fd.get('notes') || '').toString().trim()
-        });
-        showToast('Vedlikehold planlagt.');
+        if (isEdit) {
+          payload.status = fd.get('status');
+          await Maintenance.update(m.id, payload);
+          showToast('Vedlikehold oppdatert.');
+        } else {
+          await Maintenance.add(payload);
+          showToast('Vedlikehold planlagt.');
+        }
         closeModal();
         render();
       } catch (err) {
-        submitBtn.disabled = false; submitBtn.textContent = 'Lagre';
+        submitBtn.disabled = false; submitBtn.textContent = idleLabel;
       }
     });
   }
