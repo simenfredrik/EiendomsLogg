@@ -1,5 +1,5 @@
 /* ============================================================
-   EiendomsLogg — app logic
+   EiendomsLogga — app logic
    Backend: Supabase (Postgres database + Auth + Storage).
    Fyll inn din egen prosjekt-URL og anon-nøkkel under før du
    tar i bruk siden — se README-notatene fra Claude i chatten
@@ -443,7 +443,7 @@
     return '' +
       '<header class="app-header">' +
         '<div class="app-header-inner">' +
-          '<div class="brand"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logg</em></span></div>' +
+          '<div class="brand"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logga</em></span></div>' +
           '<div class="header-actions">' +
             '<button class="btn btn-ghost btn-small" id="exportBtn" type="button"><span class="full-label">Eksporter data</span></button>' +
             '<button class="btn btn-primary btn-small" id="quickAddBtn" type="button">+ Ny hendelse</button>' +
@@ -497,7 +497,7 @@
     return '' +
       '<header class="marketing-header">' +
         '<div class="marketing-header-inner">' +
-          '<div class="brand" id="brandHome" style="cursor:pointer;"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logg</em></span></div>' +
+          '<div class="brand" id="brandHome" style="cursor:pointer;"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logga</em></span></div>' +
           '<nav class="marketing-nav-links">' +
             (phase === 'landing' ? '<a href="#slik-fungerer-det">Slik fungerer det</a><a href="#priser">Priser</a>' : '') +
             (showLogout
@@ -524,7 +524,7 @@
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'eiendomslogg-data-' + todayISO() + '.json';
+    a.download = 'eiendomslogga-data-' + todayISO() + '.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -642,7 +642,7 @@
           '<div class="plan-tag" style="left:74%; top:84%; transform:translate(-50%,0);"><span class="plan-tag-dot"></span>Signert av begge parter</div>' +
         '</div>' +
       '</div>' +
-      '<p class="plan-caption">H0304 · Storgata 12 · registrert i EiendomsLogg</p>' +
+      '<p class="plan-caption">H0304 · Storgata 12 · registrert i EiendomsLogga</p>' +
     '</div>';
   }
 
@@ -677,7 +677,7 @@
       '<div>' +
         '<p class="eyebrow">FOR SMÅ OG MELLOMSTORE UTLEIERE</p>' +
         '<h1>Slutt å lete etter kvitteringen i en e-posttråd.</h1>' +
-        '<p class="lp-hero-lede">EiendomsLogg samler feil, bilder, kvitteringer, vedlikehold og inspeksjoner for hver bolig på ett sted — med dato, historikk og signatur, klart når noen spør.</p>' +
+        '<p class="lp-hero-lede">EiendomsLogga samler feil, bilder, kvitteringer, vedlikehold og inspeksjoner for hver bolig på ett sted — med dato, historikk og signatur, klart når noen spør.</p>' +
         '<div class="lp-hero-actions">' +
           '<button class="btn btn-primary" id="heroCta">Kom i gang</button>' +
           '<a class="btn btn-ghost" href="#slik-fungerer-det">Se hvordan det fungerer</a>' +
@@ -719,7 +719,7 @@
     '</div></section>';
 
     html += '<footer class="lp-footer"><div class="lp-inner lp-footer-inner">' +
-      '<span>© 2026 EiendomsLogg</span><span class="mono">LOGGET I KRISTIANSAND</span>' +
+      '<span>© 2026 EiendomsLogga</span><span class="mono">LOGGET I KRISTIANSAND</span>' +
     '</div></footer>';
 
     viewWrap.innerHTML = html;
@@ -765,7 +765,7 @@
           '<div class="form-field"><label for="li-password">Passord</label><input id="li-password" type="password" name="password" required autocomplete="current-password"></div>' +
           '<button type="submit" class="btn btn-primary btn-block">Logg inn</button>' +
         '</form>' +
-        '<p class="auth-switch">Ny hos EiendomsLogg? <a id="toSignup">Opprett konto</a></p>' +
+        '<p class="auth-switch">Ny hos EiendomsLogga? <a id="toSignup">Opprett konto</a></p>' +
       '</div></div>';
 
     document.getElementById('toSignup').addEventListener('click', function () { setPhase('signup'); });
@@ -841,7 +841,7 @@
     viewWrap.innerHTML =
       '<div class="paywall-wrap">' +
         '<div class="paywall-lock">' + iconLock() + '</div>' +
-        '<h1>Fullfør abonnementet for å låse opp EiendomsLogg</h1>' +
+        '<h1>Fullfør abonnementet for å låse opp EiendomsLogga</h1>' +
         '<p class="lp-lede">Hei ' + escapeHtml(currentUser ? currentUser.name : '') + '! Kontoen din er opprettet. Aktiver abonnementet for å få tilgang til boliger, logg, vedlikehold og inspeksjoner.</p>' +
         pricingCardReplace() +
       '</div>';
@@ -905,7 +905,7 @@
         '<div class="view-head"><div><h1>Oversikt</h1><p>Registrer boliger for å komme i gang med logg, vedlikehold og inspeksjoner.</p></div></div>' +
         '<div class="empty-state">' +
           '<p class="empty-title">Ingen boliger registrert ennå</p>' +
-          '<p class="empty-body">Legg til den første boligen din, eller last inn eksempeldata for å se hvordan EiendomsLogg fungerer.</p>' +
+          '<p class="empty-body">Legg til den første boligen din, eller last inn eksempeldata for å se hvordan EiendomsLogga fungerer.</p>' +
           '<div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">' +
             '<button class="btn btn-primary" data-action="add-property">+ Registrer bolig</button>' +
             '<button class="btn btn-ghost" data-action="seed-demo">Last inn eksempeldata</button>' +
@@ -1852,7 +1852,7 @@
       '<div class="view-actions"><button class="btn btn-ghost" data-action="print-report">Skriv ut / lagre som PDF</button><button class="btn btn-danger" data-action="delete-report">Slett rapport</button></div></div>';
 
     html += '<div id="printArea"><div class="report-doc">' +
-      '<p class="doc-eyebrow">EIENDOMSLOGG · ' + (insp.type === 'innflytting' ? 'INNFLYTTINGSRAPPORT' : 'UTFLYTTINGSRAPPORT') + '</p>' +
+      '<p class="doc-eyebrow">EIENDOMSLOGGA · ' + (insp.type === 'innflytting' ? 'INNFLYTTINGSRAPPORT' : 'UTFLYTTINGSRAPPORT') + '</p>' +
       '<h2>' + escapeHtml(prop ? prop.name : 'Ukjent bolig') + '</h2>' +
       '<div class="report-doc-meta">' +
         metaBlock('Adresse', prop ? prop.address : '—') +
