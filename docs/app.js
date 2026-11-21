@@ -760,6 +760,68 @@
     '</div>';
   }
 
+
+  function compareHtml() {
+    function row(topic, before, after) {
+      return '<div class="cmp-row" role="row"><div class="cmp-topic" role="rowheader">' + topic + '</div>' +
+        '<div class="cmp-before" role="cell"><span class="cmp-x" aria-hidden="true">✕</span>' + before + '</div>' +
+        '<div class="cmp-after" role="cell"><span class="cmp-ok" aria-hidden="true">✓</span>' + after + '</div></div>';
+    }
+    return '<div class="cmp" role="table" aria-label="Sammenligning av hvordan det ofte er i dag og med EiendomsLogga">' +
+      '<div class="cmp-head" role="row"><div role="columnheader"></div><div role="columnheader">Slik er det ofte</div><div role="columnheader">Med EiendomsLogga</div></div>' +
+      row('Kvitteringer', 'Spredt mellom e-post, mapper og bilder på telefonen', 'Lagt til hendelsen, med bilde og beløp') +
+      row('Feil fra leietaker', 'En tekstmelding som lett forsvinner', 'Logget med dato og status fra meldt til utbedret') +
+      row('Vedlikehold', 'Du må huske at takrennene skal renses', 'Plan med neste dato. Gjentakende oppgaver fornyes selv') +
+      row('Innflytting', 'Noen bilder og minnet ditt', 'Rom for rom, med bilder og signatur fra begge parter') +
+      row('Regnskap og skatt', 'Lete i bunker når året skal gjøres opp', 'Kostnader per bolig og år, som CSV') +
+    '</div>';
+  }
+
+  function tourHtml() {
+    function tab(id, label, selected) {
+      return '<button class="tour-tab" role="tab" id="tourTab-' + id + '" aria-controls="tourPanel-' + id + '" aria-selected="' + (selected ? 'true' : 'false') + '" tabindex="' + (selected ? '0' : '-1') + '" data-tour="' + id + '">' + label + '</button>';
+    }
+    function tl(type, tone, title, meta, extra) {
+      return '<div class="tl-item"><span class="tl-badge ' + tone + '">' + type + '</span><div class="tl-main"><b>' + title + '</b><small>' + meta + '</small></div>' + (extra || '') + '</div>';
+    }
+    function mt(title, meta, tag, late) {
+      return '<div class="mt-item' + (late ? ' late' : '') + '"><span class="attention-dot ' + (late ? 'late' : 'soon') + '"></span><div class="tl-main"><b>' + title + '</b><small>' + meta + '</small></div>' + (tag ? '<span class="mt-tag">' + tag + '</span>' : '') + '</div>';
+    }
+    var bars = [['jan', 30], ['feb', 12], ['mar', 62], ['apr', 20], ['mai', 8], ['jun', 44], ['jul', 16], ['aug', 28], ['sep', 100], ['okt', 36], ['nov', 52]];
+    var barsHtml = bars.map(function (b) { return '<div class="bar"><i style="--h:' + b[1] + '%"></i><span>' + b[0] + '</span></div>'; }).join('');
+    return '<div class="tour" id="tour">' +
+      '<div class="tour-tabs" role="tablist" aria-label="Utforsk appen">' + tab('logg', 'Logg', true) + tab('vedlikehold', 'Vedlikehold', false) + tab('kostnader', 'Kostnader', false) + '</div>' +
+      '<div class="tour-stage">' +
+        '<div class="tour-panel" role="tabpanel" id="tourPanel-logg" aria-labelledby="tourTab-logg">' +
+          '<div class="mock-window" aria-hidden="true"><div class="mock-bar"><span></span><span></span><span></span><i>Storgata 12 · Logg</i></div><div class="tour-body">' +
+            '<div class="tour-chips"><span class="chip on">Alle</span><span class="chip">Feil</span><span class="chip">Vedlikehold</span><span class="chip">Dokument</span></div>' +
+            tl('FEIL', 'o', 'Vannlekkasje ved kjøkkenvask', '18.11.2026 · 2 bilder · åpen', '<span class="tl-state o">ÅPEN</span>') +
+            tl('VEDL.', 'a', 'Service varmepumpe', '02.03.2026 · 1 450 kr', '<span class="tl-state g">LØST</span>') +
+            tl('DOK.', 'b', 'Kvittering røykvarslere', '05.12.2025 · 800 kr · kvittering.pdf', '<span class="tl-state g">LØST</span>') +
+            '<p class="tour-sum">3 hendelser · <b>2 250 kr</b></p>' +
+          '</div><p class="mock-caption">Eksempeldata</p></div>' +
+          '<div class="tour-note"><h3>Alt som skjer med boligen, i rekkefølge</h3><p>Søk, filtrer på år og type, og rediger i etterkant. Bilder og kvitteringer ligger på hendelsen de hører til.</p></div>' +
+        '</div>' +
+        '<div class="tour-panel" role="tabpanel" id="tourPanel-vedlikehold" aria-labelledby="tourTab-vedlikehold" hidden>' +
+          '<div class="mock-window" aria-hidden="true"><div class="mock-bar"><span></span><span></span><span></span><i>Vedlikeholdsplan</i></div><div class="tour-body">' +
+            mt('Røykvarsler, bytt batteri', 'Storgata 12 · forfalt for 9 dager siden', 'Kvartalsvis', true) +
+            mt('Rens av takrenner', 'Kystveien 87 · om 12 dager', 'Årlig', false) +
+            mt('Ettersyn tak', 'Storgata 12 · 30.11.2026', '', false) +
+            '<div class="mt-done" id="mtDone"><button class="mt-btn" tabindex="-1">Merk utført</button><span>Neste runde planlegges automatisk: <b>12.02.2027</b></span></div>' +
+          '</div><p class="mock-caption">Eksempeldata</p></div>' +
+          '<div class="tour-note"><h3>Vedlikehold som planlegger seg selv</h3><p>Velg kvartalsvis, halvårlig eller årlig. Når du merker oppgaven utført, lages neste automatisk, og det som haster havner øverst på oversikten.</p></div>' +
+        '</div>' +
+        '<div class="tour-panel" role="tabpanel" id="tourPanel-kostnader" aria-labelledby="tourTab-kostnader" hidden>' +
+          '<div class="mock-window" aria-hidden="true"><div class="mock-bar"><span></span><span></span><span></span><i>Kostnader · 2026</i></div><div class="tour-body">' +
+            '<div class="tour-chips"><span class="chip on">Alle boliger</span><span class="chip">2026</span><span class="chip csv">Last ned CSV</span></div>' +
+            '<div class="bars" aria-hidden="true">' + barsHtml + '</div>' +
+            '<p class="tour-sum">Sum hittil i år · <b>12 450 kr</b></p>' +
+          '</div><p class="mock-caption">Eksempeldata</p></div>' +
+          '<div class="tour-note"><h3>Tallene klare når året skal gjøres opp</h3><p>Filtrer på bolig og år, se summen, og last ned som CSV til regneark eller regnskap.</p></div>' +
+        '</div>' +
+      '</div></div>';
+  }
+
   function faqItem(q, a) {
     return '<details class="faq-item"><summary>' + q + '</summary><p>' + a + '</p></details>';
   }
@@ -818,6 +880,12 @@
       '</div>' +
     '</div></section>';
 
+    html += '<section class="lp-section reveal" id="sammenligning"><div class="lp-inner">' +
+      '<p class="eyebrow">FØR OG ETTER</p><h2>Samme jobb, mindre leting</h2>' +
+      '<p class="lp-lede">Du gjør allerede mye av dette i dag. Forskjellen er at det havner samme sted, med dato.</p>' +
+      compareHtml() +
+    '</div></section>';
+
     html += '<section class="lp-section reveal" id="slik-fungerer-det"><div class="lp-inner">' +
       '<p class="eyebrow">SLIK FUNGERER DET</p>' +
       '<h2>Fra registrert bolig til ferdig rapport</h2>' +
@@ -835,6 +903,12 @@
       '<h2>Oversikt over det som trenger deg, og rapport som holder</h2>' +
       '<p class="lp-lede">Oversikten viser hva som er forfalt, hva som forfaller snart og hvilke feil som er åpne. Inspeksjonene ender som en ferdig rapport med signatur fra begge parter.</p>' +
       '<div class="preview-grid">' + previewDashboardHtml() + previewReportHtml() + '</div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section reveal" id="omvisning"><div class="lp-inner">' +
+      '<p class="eyebrow">PRØV DEG FRAM</p><h2>Se hva du får i hverdagen</h2>' +
+      '<p class="lp-lede">Bla mellom logg, vedlikehold og kostnader for å se hvordan det ser ut i bruk.</p>' +
+      tourHtml() +
     '</div></section>';
 
     html += '<section class="lp-section reveal"><div class="lp-inner">' +
@@ -930,6 +1004,7 @@
 
     initRevealObserver();
     initLivePreview();
+    initTour();
   }
 
   // «Levende» forhåndsvisning: animasjonene starter når eksemplene kommer til syne, og stopper når de forsvinner.
@@ -1011,6 +1086,50 @@
     }, { threshold: 0.4 });
     if (dash) io.observe(dash);
     if (report) io.observe(report);
+  }
+
+
+  // Fanene i omvisningen: tastaturstyrt (piltaster), og de bytter selv til brukeren tar over.
+  function initTour() {
+    var root = document.getElementById('tour');
+    if (!root) return;
+    var tabs = Array.prototype.slice.call(root.querySelectorAll('.tour-tab'));
+    var panels = Array.prototype.slice.call(root.querySelectorAll('.tour-panel'));
+    var touched = false, timer = null, visible = false;
+
+    function select(i, focus) {
+      tabs.forEach(function (t, k) {
+        var on = k === i;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+        panels[k].hidden = !on;
+        if (on) { panels[k].classList.remove('tour-in'); void panels[k].offsetWidth; panels[k].classList.add('tour-in'); }
+      });
+      if (focus) tabs[i].focus();
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { touched = true; stop(); select(i, false); });
+      t.addEventListener('keydown', function (e) {
+        var n = null;
+        if (e.key === 'ArrowRight') n = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') n = (i + tabs.length - 1) % tabs.length;
+        else if (e.key === 'Home') n = 0;
+        else if (e.key === 'End') n = tabs.length - 1;
+        if (n !== null) { e.preventDefault(); touched = true; stop(); select(n, true); }
+      });
+    });
+    function current() { return tabs.findIndex(function (t) { return t.getAttribute('aria-selected') === 'true'; }); }
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    function start() {
+      if (timer || touched) return;
+      timer = setInterval(function () { select((current() + 1) % tabs.length, false); }, 6000);
+    }
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+      if (visible) start(); else stop();
+    }, { threshold: 0.5 }).observe(root);
   }
 
   function initRevealObserver() {

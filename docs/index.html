@@ -39,6 +39,20 @@
   "publisher": { "@type": "Organization", "name": "Enkel Orden AS", "identifier": "838591892", "address": { "@type": "PostalAddress", "addressLocality": "Kristiansand", "addressCountry": "NO" } }
 }
 </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "inLanguage": "nb",
+  "mainEntity": [
+    {"@type": "Question", "name": "Hva koster det?", "acceptedAnswer": {"@type": "Answer", "text": "499 kr i måneden, for alle boligene dine. Det er ingen ekstra pris per bolig."}},
+    {"@type": "Question", "name": "Er det bindingstid?", "acceptedAnswer": {"@type": "Answer", "text": "Nei. Du kan avslutte abonnementet selv under «Administrer abonnement» i appen."}},
+    {"@type": "Question", "name": "Fungerer det på mobil?", "acceptedAnswer": {"@type": "Answer", "text": "Ja. EiendomsLogga kjører i nettleseren på mobil, nettbrett og PC, så du kan ta bilder og fylle ut inspeksjonen mens du er i boligen."}},
+    {"@type": "Question", "name": "Må leietaker ha konto?", "acceptedAnswer": {"@type": "Answer", "text": "Nei. Leietaker trenger ikke gjøre noe på forhånd. Ved inspeksjonen signerer begge parter direkte på skjermen din."}},
+    {"@type": "Question", "name": "Hvem eier dataene mine?", "acceptedAnswer": {"@type": "Answer", "text": "Du. Du kan eksportere alt som JSON, og laste ned loggen som CSV."}}
+  ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -47,11 +61,12 @@
 </head>
 <body>
 
+<a class="skip-link" href="#viewWrap">Hopp til innhold</a>
 <div id="headerWrap">
   <!-- Header is rendered by app.js — marketing nav, auth nav, or the logged-in app nav -->
 </div>
 
-<main class="app-main">
+<main class="app-main" id="main">
   <div class="view-wrap" id="viewWrap">
     <!-- Views are rendered here by app.js -->
   </div>
