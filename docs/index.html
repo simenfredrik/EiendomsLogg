@@ -3,8 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EiendomsLogga</title>
-<meta name="description" content="EiendomsLogga — registrer feil, last opp bilder og kvitteringer, planlegg vedlikehold og gjennomfør digitale inspeksjoner for hver bolig.">
+<title>EiendomsLogga – logg, vedlikehold og inspeksjoner for utleiere</title>
+<meta name="description" content="Samle feil, bilder, kvitteringer, vedlikehold og digitale inn- og utflyttingsinspeksjoner for hver bolig på ett sted. For utleiere med noen få boliger. 499 kr i måneden, ingen bindingstid.">
+<link rel="canonical" href="https://eiendomslogga.no/">
+<meta name="theme-color" content="#0E2540">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="nb_NO">
+<meta property="og:site_name" content="EiendomsLogga">
+<meta property="og:title" content="EiendomsLogga – slutt å lete etter kvitteringen i en e-posttråd">
+<meta property="og:description" content="Feil, bilder, kvitteringer, vedlikehold og digitale inspeksjoner for hver bolig, på ett sted. For utleiere med noen få boliger.">
+<meta property="og:url" content="https://eiendomslogga.no/">
+<meta property="og:image" content="https://eiendomslogga.no/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="EiendomsLogga – logg og inspeksjoner for utleiere">
+<meta name="twitter:description" content="Feil, bilder, kvitteringer, vedlikehold og digitale inspeksjoner for hver bolig, på ett sted.">
+<meta name="twitter:image" content="https://eiendomslogga.no/og-image.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "EiendomsLogga",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "inLanguage": "nb",
+  "url": "https://eiendomslogga.no/",
+  "description": "Verktøy for utleiere som samler feil, bilder, kvitteringer, vedlikehold og digitale inspeksjoner for hver bolig.",
+  "offers": { "@type": "Offer", "price": "499", "priceCurrency": "NOK", "category": "subscription" },
+  "publisher": { "@type": "Organization", "name": "Enkel Orden AS", "identifier": "838591892", "address": { "@type": "PostalAddress", "addressLocality": "Kristiansand", "addressCountry": "NO" } }
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -28,6 +62,14 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<noscript>
+  <div style="max-width:640px;margin:60px auto;padding:0 20px;font-family:sans-serif;color:#E9EEF5;">
+    <h1>EiendomsLogga</h1>
+    <p>Logg, vedlikehold og digitale inspeksjoner for utleiere med noen få boliger. 499 kr i måneden, ingen bindingstid.</p>
+    <p>Siden krever JavaScript for å fungere. Slå på JavaScript i nettleseren og last siden på nytt.</p>
+  </div>
+</noscript>
 
 <template id="tpl-empty-state">
   <div class="empty-state">

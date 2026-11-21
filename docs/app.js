@@ -162,6 +162,46 @@
     return num.toLocaleString('nb-NO') + ' kr';
   }
 
+  /* ---------------- Dato-hjelpere (gjentakende vedlikehold, frister) ---------------- */
+
+  var RECUR_MONTHS = { 'Kvartalsvis': 3, 'Halvårlig': 6, 'Årlig': 12 };
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  // Legger måneder til en ISO-dato (åååå-mm-dd). 31. jan + 1 mnd blir 28./29. feb, ikke 3. mars.
+  function addMonthsISO(iso, months) {
+    var p = iso.split('-').map(Number);
+    var total = p[1] - 1 + months;
+    var y = p[0] + Math.floor(total / 12);
+    var m = ((total % 12) + 12) % 12;
+    var lastDay = new Date(y, m + 1, 0).getDate();
+    return y + '-' + pad2(m + 1) + '-' + pad2(Math.min(p[2], lastDay));
+  }
+
+  // Neste forfallsdato for en gjentakende oppgave. Hopper over datoer som allerede er passert.
+  function nextDueDate(dueISO, recurring) {
+    var step = RECUR_MONTHS[recurring];
+    if (!step || !dueISO) return null;
+    var today = todayISO();
+    var k = 1;
+    var next = addMonthsISO(dueISO, step * k);
+    while (next < today && k < 400) { k++; next = addMonthsISO(dueISO, step * k); }
+    return next;
+  }
+
+  function daysBetween(fromISO, toISO) {
+    var a = Date.UTC.apply(null, fromISO.split('-').map(function (v, i) { return i === 1 ? Number(v) - 1 : Number(v); }));
+    var b = Date.UTC.apply(null, toISO.split('-').map(function (v, i) { return i === 1 ? Number(v) - 1 : Number(v); }));
+    return Math.round((b - a) / 86400000);
+  }
+
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  function daysLabel(n) {
+    if (n === 0) return 'i dag';
+    return plural(Math.abs(n), 'dag', 'dager');
+  }
+
   /* ---------------- CRUD helpers (Supabase-backed) ----------------
      Each module keeps a synchronous in-memory copy (DB.*) so the
      existing render functions can read it instantly, and writes
@@ -251,6 +291,22 @@
     }
   };
 
+  // Setter en vedlikeholdsoppgave til utført. Er den gjentakende, planlegges neste runde automatisk.
+  // Returnerer neste forfallsdato (eller null hvis oppgaven ikke gjentas).
+  async function completeMaintenance(m, recurringOverride) {
+    var recurring = recurringOverride !== undefined ? recurringOverride : m.recurring;
+    await Maintenance.update(m.id, { status: 'utført' });
+    var next = nextDueDate(m.dueDate, recurring);
+    if (!next) return null;
+    var exists = DB.maintenance.some(function (o) {
+      return o.id !== m.id && o.propertyId === m.propertyId && o.title === m.title && o.dueDate === next && o.status !== 'utført';
+    });
+    if (!exists) {
+      await Maintenance.add({ propertyId: m.propertyId, title: m.title, dueDate: next, recurring: recurring, notes: m.notes || '' });
+    }
+    return next;
+  }
+
   var Inspections = {
     all: function () { return DB.inspections.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }); },
     forProperty: function (propertyId) { return Inspections.all().filter(function (i) { return i.propertyId === propertyId; }); },
@@ -277,7 +333,7 @@
     view: 'dashboard',
     selectedPropertyId: null,
     selectedReportId: null,
-    logFilter: { propertyId: '', type: '', status: '' },
+    logFilter: { propertyId: '', type: '', status: '', year: '', q: '' },
     wizard: null
   };
 
@@ -445,10 +501,10 @@
         '<div class="app-header-inner">' +
           '<div class="brand"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logga</em></span></div>' +
           '<div class="header-actions">' +
-            '<button class="btn btn-ghost btn-small" id="exportBtn" type="button"><span class="full-label">Eksporter data</span></button>' +
+            '<button class="btn btn-ghost btn-small hide-mobile" id="exportBtn" type="button"><span class="full-label">Eksporter data</span></button>' +
             '<button class="btn btn-primary btn-small" id="quickAddBtn" type="button">+ Ny hendelse</button>' +
             '<span class="account-pill"><span class="account-avatar">' + escapeHtml(initials) + '</span><span class="account-name">' + escapeHtml(currentUser ? currentUser.name : '') + '</span></span>' +
-            '<button class="btn btn-ghost btn-small" id="manageSubBtn" type="button"><span class="full-label">Administrer abonnement</span></button>' +
+            '<button class="btn btn-ghost btn-small hide-mobile" id="manageSubBtn" type="button"><span class="full-label">Administrer abonnement</span></button>' +
             '<button class="btn btn-ghost btn-small" id="logoutBtn" type="button">Logg ut</button>' +
           '</div>' +
         '</div>' +
@@ -499,7 +555,7 @@
         '<div class="marketing-header-inner">' +
           '<div class="brand" id="brandHome" style="cursor:pointer;"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logga</em></span></div>' +
           '<nav class="marketing-nav-links">' +
-            (phase === 'landing' ? '<a href="#slik-fungerer-det">Slik fungerer det</a><a href="#priser">Priser</a>' : '') +
+            (phase === 'landing' ? '<a class="nav-anchor" href="#slik-fungerer-det">Slik fungerer det</a><a class="nav-anchor" href="#priser">Priser</a><a class="nav-anchor" href="#sporsmal">Spørsmål</a>' : '') +
             (showLogout
               ? '<a id="navLogout">Logg ut</a>'
               : '<a id="navLogin">Logg inn</a><a class="btn btn-primary btn-small" id="navSignup">Kom i gang</a>') +
@@ -637,8 +693,8 @@
             '<text class="plan-room-label" x="130" y="286">BAD</text>' +
             '<text class="plan-room-label" x="330" y="286">SOVEROM</text>' +
           '</svg>' +
-          '<div class="plan-tag" style="left:24%; top:68%; transform:translate(-50%,0);"><span class="plan-tag-dot"></span>Inspeksjon fullført</div>' +
-          '<div class="plan-tag" style="left:76%; top:16%; transform:translate(-50%,0);"><span class="plan-tag-dot warn"></span>Lekkasje meldt · 12.03</div>' +
+          '<div class="plan-tag" style="left:26%; top:80%; transform:translate(-50%,0);"><span class="plan-tag-dot"></span>Inspeksjon fullført</div>' +
+          '<div class="plan-tag" style="left:76%; top:25%; transform:translate(-50%,0);"><span class="plan-tag-dot warn"></span>Lekkasje meldt · 12.03</div>' +
           '<div class="plan-tag" style="left:74%; top:84%; transform:translate(-50%,0);"><span class="plan-tag-dot"></span>Signert av begge parter</div>' +
         '</div>' +
       '</div>' +
@@ -646,12 +702,66 @@
     '</div>';
   }
 
+  // Fyll inn en e-postadresse her, så vises den i bunnteksten på forsiden. Tom = vises ikke.
+  var CONTACT_EMAIL = '';
+
   function howStep(num, title, body, iconHtml) {
     return '<div class="how-step"><div class="how-step-icon">' + iconHtml + '</div><p class="how-step-num mono">STEG ' + num + '</p><h3>' + title + '</h3><p>' + body + '</p></div>';
   }
 
   function lpFeature(title, body, iconHtml) {
     return '<div class="lp-feature-card"><div class="lp-feature-icon">' + iconHtml + '</div><h3>' + title + '</h3><p>' + body + '</p></div>';
+  }
+
+  function iconDownload() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>'; }
+  function iconCoins() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>'; }
+  function iconAlert() { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><circle cx="12" cy="18" r=".6"/></svg>'; }
+  function iconMail() { return '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>'; }
+  function iconChat() { return '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>'; }
+  function iconScale() { return '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M6 21h12"/><path d="M5 7h14"/><path d="M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></svg>'; }
+
+  function painCard(icon, title, body) {
+    return '<div class="pain-card"><div class="pain-icon">' + icon + '</div><h3>' + title + '</h3><p>' + body + '</p></div>';
+  }
+
+  // Eksempeldata i forhåndsvisningene er laget for illustrasjon og er ikke ekte kunder.
+  function previewDashboardHtml() {
+    function row(tone, label, text, meta) {
+      return '<div class="mock-row"><span class="attention-dot ' + tone + '"></span><span class="mock-row-main"><em>' + label + '</em>' + text + '</span><span class="mock-row-meta">' + meta + '</span></div>';
+    }
+    return '<div class="mock-window" aria-hidden="true">' +
+      '<div class="mock-bar"><span></span><span></span><span></span><i>eiendomslogga.no</i></div>' +
+      '<div class="mock-body">' +
+        '<div class="mock-stats">' +
+          '<div><small>BOLIGER</small><b>4</b></div><div><small>ÅPNE FEIL</small><b class="o">2</b></div>' +
+          '<div><small>VEDLIKEHOLD SNART</small><b class="a">3</b></div><div><small>INSPEKSJONER</small><b>6</b></div>' +
+        '</div>' +
+        '<p class="mock-title">KREVER OPPMERKSOMHET</p>' +
+        '<div class="mock-list">' +
+          row('late', 'Forfalt', 'Røykvarsler', 'Storgata 12 · 9 dager siden') +
+          row('late', 'Åpen feil', 'Vannlekkasje ved kjøkkenvask', 'Storgata 12 · åpen i 3 dager') +
+          row('soon', 'Forfaller snart', 'Rens av takrenner', 'Kystveien 87 · om 12 dager') +
+        '</div>' +
+      '</div>' +
+      '<p class="mock-caption">Eksempeldata</p></div>';
+  }
+
+  function previewReportHtml() {
+    function r(name, cond, cls) { return '<div class="mock-room"><span>' + name + '</span><b class="' + cls + '">' + cond + '</b></div>'; }
+    return '<div class="mock-report" aria-hidden="true">' +
+      '<p class="mock-report-eyebrow">EIENDOMSLOGGA · INNFLYTTINGSRAPPORT</p>' +
+      '<h3>Storgata 12</h3><p class="mock-report-meta">12.03.2026 · Leietaker: Kari Nordmann</p>' +
+      r('Stue', 'GOD', 'g') + r('Kjøkken', 'OK', 'o') + r('Bad', 'GOD', 'g') + r('Soverom', 'GOD', 'g') +
+      '<div class="mock-sign">' +
+        '<svg viewBox="0 0 160 50"><path d="M6 36 C16 6 26 46 36 22 S56 8 66 32 S92 14 100 28 S128 24 152 18" fill="none" stroke="#26364A" stroke-width="2" stroke-linecap="round"/></svg>' +
+        '<svg viewBox="0 0 160 50"><path d="M6 32 C20 10 30 44 46 24 S74 10 84 30 S116 18 152 26" fill="none" stroke="#26364A" stroke-width="2" stroke-linecap="round"/></svg>' +
+      '</div><div class="mock-sign-labels"><span>LEIETAKER</span><span>UTLEIER</span></div>' +
+      '<div class="mock-stamp"><span>GODKJENT</span></div>' +
+    '</div>';
+  }
+
+  function faqItem(q, a) {
+    return '<details class="faq-item"><summary>' + q + '</summary><p>' + a + '</p></details>';
   }
 
   function pricingCardHtml(buttonId, buttonLabel) {
@@ -663,10 +773,12 @@
         '<li>Ubegrenset feilregistrering og logg</li>' +
         '<li>Bilder, dokumenter og kvitteringer</li>' +
         '<li>Digitale inspeksjoner med signatur</li>' +
-        '<li>Automatiske PDF-rapporter</li>' +
-        '<li>Vedlikeholdsplan med varsler</li>' +
+        '<li>Rapporter du kan skrive ut eller lagre som PDF</li>' +
+        '<li>Vedlikeholdsplan med gjentakende oppgaver</li>' +
+        '<li>Kostnadsoversikt med CSV-eksport</li>' +
       '</ul>' +
       '<button class="btn btn-primary btn-block" id="' + buttonId + '">' + buttonLabel + '</button>' +
+      '<p class="pricing-fine">Ingen bindingstid. Du avslutter selv under «Administrer abonnement».</p>' +
     '</div></div>';
   }
 
@@ -676,18 +788,33 @@
     html += '<section class="lp-section lp-hero"><div class="lp-inner lp-hero-grid">' +
       '<div>' +
         '<p class="eyebrow">FOR SMÅ OG MELLOMSTORE UTLEIERE</p>' +
-        '<h1>Slutt å lete etter kvitteringen i en e-posttråd.</h1>' +
+        '<h1>Slutt å lete etter kvitteringen i en e‑posttråd.</h1>' +
         '<p class="lp-hero-lede">EiendomsLogga samler feil, bilder, kvitteringer, vedlikehold og inspeksjoner for hver bolig på ett sted — med dato, historikk og signatur, klart når noen spør.</p>' +
         '<div class="lp-hero-actions">' +
-          '<button class="btn btn-primary" id="heroCta">Kom i gang</button>' +
-          '<a class="btn btn-ghost" href="#slik-fungerer-det">Se hvordan det fungerer</a>' +
+          '<button class="btn btn-primary btn-lg" id="heroCta">Kom i gang</button>' +
+          '<a class="btn btn-ghost btn-lg" href="#slik-fungerer-det">Se hvordan det fungerer</a>' +
         '</div>' +
-        '<p class="lp-hero-note">Krever abonnement. Ingen bindingstid — avslutt når du vil.</p>' +
+        '<ul class="trust-row">' +
+          '<li>499 kr i måneden — ubegrenset antall boliger</li>' +
+          '<li>Ingen bindingstid</li>' +
+          '<li>Dataene dine kan eksporteres når som helst</li>' +
+        '</ul>' +
       '</div>' +
       heroIllustrationHtml() +
     '</div></section>';
 
-    html += '<section class="lp-section tinted reveal" id="slik-fungerer-det"><div class="lp-inner">' +
+    html += '<section class="lp-section tinted reveal" id="problemet"><div class="lp-inner">' +
+      '<p class="eyebrow">SLIK ER DET OFTE I DAG</p>' +
+      '<h2>Det du trenger, ligger alltid et annet sted</h2>' +
+      '<p class="lp-lede">Det går fint så lenge alt er rolig. Problemet kommer når noen spør hva som faktisk ble gjort, og når.</p>' +
+      '<div class="pain-grid">' +
+        painCard(iconMail(), 'Kvitteringen er et sted i e-posten', 'Rørleggeren sendte regningen for et halvt år siden. Du vet den finnes — men ikke i hvilken tråd.') +
+        painCard(iconChat(), 'Leietaker sa det på tekstmelding', 'Meldingen om fukten på badet forsvant mellom alt annet. Nå er det uenighet om når du fikk vite det.') +
+        painCard(iconScale(), 'Uenighet om depositum', 'Ved utflytting står du med bare hukommelsen din, uten bilder, dato eller signatur fra innflyttingen.') +
+      '</div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section reveal" id="slik-fungerer-det"><div class="lp-inner">' +
       '<p class="eyebrow">SLIK FUNGERER DET</p>' +
       '<h2>Fra registrert bolig til ferdig rapport</h2>' +
       '<p class="lp-lede">Fire steg som dekker det meste en utleier trenger å holde styr på gjennom hele leieforholdet.</p>' +
@@ -695,39 +822,107 @@
         howStep('01', 'Registrer boligen', 'Legg inn adresse, rom og leietaker. Dette blir startpunktet for boligens egen logg.', iconHome()) +
         howStep('02', 'Loggfør det som skjer', 'Feil, vedlikehold, kvitteringer og bilder registreres fortløpende, på PC eller mobil.', iconClipboard()) +
         howStep('03', 'Gjennomfør inspeksjon', 'Ved inn- eller utflytting fylles en digital befaring ut med bilder og signatur fra begge parter.', iconCamera()) +
-        howStep('04', 'Få automatisk rapport', 'Inspeksjonen blir til en ferdig rapport, klar til å sendes eller arkiveres.', iconDoc()) +
+        howStep('04', 'Få ferdig rapport', 'Inspeksjonen blir til en rapport du kan skrive ut eller lagre som PDF.', iconDoc()) +
       '</div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section tinted reveal" id="se-appen"><div class="lp-inner">' +
+      '<p class="eyebrow">SLIK SER DET UT</p>' +
+      '<h2>Oversikt over det som trenger deg, og rapport som holder</h2>' +
+      '<p class="lp-lede">Oversikten viser hva som er forfalt, hva som forfaller snart og hvilke feil som er åpne. Inspeksjonene ender som en ferdig rapport med signatur fra begge parter.</p>' +
+      '<div class="preview-grid">' + previewDashboardHtml() + previewReportHtml() + '</div>' +
     '</div></section>';
 
     html += '<section class="lp-section reveal"><div class="lp-inner">' +
       '<p class="eyebrow">ALT PÅ ETT STED</p><h2>Bygget rundt hvordan en bolig faktisk driftes</h2>' +
-      '<p class="lp-lede">Seks moduler som dekker det meste en utleier trenger å holde styr på.</p>' +
+      '<p class="lp-lede">Det du trenger for å holde orden, uten at det blir et stort system å sette seg inn i.</p>' +
       '<div class="lp-feature-grid">' +
         lpFeature('Feilregistrering', 'Det leietaker melder om forsvinner ikke i en tekstmelding du ikke finner igjen — skriv det inn på et minutt, med status fra meldt til utbedret.', iconClipboard()) +
-        lpFeature('Bilder og dokumenter', 'Last opp bilder, kontrakter og kvitteringer, søkbart i ettertid.', iconImage()) +
-        lpFeature('Vedlikeholdsplan', 'Planlegg service og sesongvedlikehold, få varsel før noe forfaller.', iconCalendar()) +
-        lpFeature('Digital inspeksjon', 'Gjennomfør inn- og utflyttingskontroller på mobilen, med signatur på stedet.', iconCamera()) +
-        lpFeature('Automatiske rapporter', 'Inspeksjoner blir til ferdige rapporter, klare til å sendes eller arkiveres.', iconDoc()) +
-        lpFeature('Historikk per bolig', 'Se hele livsløpet til hver leilighet — hva som er gjort, når og hva det kostet.', iconClock()) +
+        lpFeature('Bilder og dokumenter', 'Last opp bilder, kontrakter og kvitteringer til hver hendelse, og finn dem igjen med søk.', iconImage()) +
+        lpFeature('Vedlikeholdsplan', 'Planlegg service og sesongvedlikehold. Gjentakende oppgaver planlegger neste runde selv når du merker dem utført.', iconCalendar()) +
+        lpFeature('Krever oppmerksomhet', 'Oversikten viser forfalt vedlikehold, oppgaver som forfaller de neste 30 dagene og feil som fortsatt er åpne.', iconAlert()) +
+        lpFeature('Digital inspeksjon', 'Gjennomfør inn- og utflyttingskontroller på mobilen, rom for rom, med signatur på stedet.', iconCamera()) +
+        lpFeature('Rapporter', 'Inspeksjoner blir til ferdige rapporter du kan skrive ut eller lagre som PDF.', iconDoc()) +
+        lpFeature('Historikk per bolig', 'Se hele livsløpet til hver leilighet — hva som er gjort, når, og hva det kostet. Skriv ut hele historikken om noen ber om den.', iconClock()) +
+        lpFeature('Kostnader og CSV', 'Filtrer på bolig og år, se summen av kostnadene og last ned som CSV. Greit å ha når skattemeldingen skal fylles ut.', iconCoins()) +
+        lpFeature('Dataene dine er dine', 'Eksporter alt som JSON når du vil. Du kan avslutte abonnementet selv, uten å ringe noen.', iconDownload()) +
       '</div>' +
     '</div></section>';
 
-    html += '<section class="lp-section tinted reveal" id="priser"><div class="lp-inner" style="text-align:center;">' +
+    html += '<section class="lp-section tinted reveal" id="depositum"><div class="lp-inner depositum">' +
+      '<div><p class="eyebrow">NÅR NOEN SPØR</p><h2>Dokumentasjon er mye enklere å ha før du trenger den</h2></div>' +
+      '<div><p class="lp-lede" style="margin-bottom:16px;">Ved innflytting dokumenterer du tilstanden rom for rom, med bilder og signatur fra begge parter. Underveis loggfører du feil og vedlikehold med dato. Ved utflytting gjør du det samme, og har noe konkret å sammenligne med.</p>' +
+      '<p class="fine-print">EiendomsLogga er et dokumentasjonsverktøy og gir ikke juridisk rådgivning. Ved en konkret tvist bør du kontakte jurist eller Husleietvistutvalget.</p></div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section reveal" id="priser"><div class="lp-inner" style="text-align:center;">' +
       '<p class="eyebrow" style="text-align:center;">PRISER</p><h2 style="margin-left:auto;margin-right:auto;">Ett abonnement, alt inkludert</h2>' +
       '<p class="lp-lede" style="margin-left:auto;margin-right:auto;text-align:center;">Ingen skjulte kostnader. Legg til så mange boliger du trenger.</p>' +
       pricingCardHtml('pricingCta', 'Kom i gang') +
+      '<div class="calc"><label for="calcRange">Hvor mange boliger har du?</label>' +
+        '<input id="calcRange" type="range" min="1" max="20" value="3">' +
+        '<p class="calc-out"><b id="calcN">3</b> <span id="calcUnit">boliger</span> gir <b id="calcPer">166 kr</b> per bolig i måneden</p></div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section tinted reveal" id="sporsmal"><div class="lp-inner faq-wrap">' +
+      '<p class="eyebrow">SPØRSMÅL</p><h2>Ofte stilte spørsmål</h2>' +
+      '<div class="faq-list">' +
+        faqItem('Hva koster det?', '499 kr i måneden, for alle boligene dine. Det er ingen ekstra pris per bolig.') +
+        faqItem('Er det bindingstid?', 'Nei. Du kan avslutte abonnementet selv under «Administrer abonnement» i appen.') +
+        faqItem('Fungerer det på mobil?', 'Ja. EiendomsLogga kjører i nettleseren på mobil, nettbrett og PC, så du kan ta bilder og fylle ut inspeksjonen mens du er i boligen.') +
+        faqItem('Må leietaker ha konto?', 'Nei. Leietaker trenger ikke gjøre noe på forhånd. Ved inspeksjonen signerer begge parter direkte på skjermen din.') +
+        faqItem('Hvem eier dataene mine?', 'Du. Du kan eksportere alt som JSON, og laste ned loggen som CSV. Slettes en bolig, slettes loggen for den også.') +
+        faqItem('Er rapportene juridisk bindende?', 'Rapportene er dokumentasjon med dato og signaturer fra begge parter. EiendomsLogga gir ikke juridisk rådgivning, og hvor mye en rapport veier i en tvist avhenger av saken.') +
+        faqItem('Hvor lagres dataene, og hva med betalingen?', 'Data lagres hos Supabase. Betalingen håndteres av Stripe, og kortopplysningene dine lagres aldri hos oss. Les mer i <a href="personvern.html">personvernerklæringen</a>.') +
+        faqItem('Hvem står bak?', 'EiendomsLogga drives av Enkel Orden AS i Kristiansand (org.nr. 838 591 892).') +
+      '</div>' +
+    '</div></section>';
+
+    html += '<section class="lp-section cta-band reveal"><div class="lp-inner" style="text-align:center;">' +
+      '<h2 style="margin-left:auto;margin-right:auto;max-width:26ch;">Få orden på boligene før noen spør om dokumentasjon</h2>' +
+      '<p class="lp-lede" style="margin:0 auto 26px;text-align:center;">Registrer den første boligen på noen minutter.</p>' +
+      '<button class="btn btn-primary btn-lg" id="ctaBandBtn">Kom i gang</button>' +
     '</div></section>';
 
     html += '<footer class="lp-footer"><div class="lp-inner lp-footer-inner">' +
-      '<span>© 2026 EiendomsLogga</span><span class="mono">LOGGET I KRISTIANSAND</span>' +
+      '<span>© 2026 Enkel Orden AS · Org.nr. 838 591 892</span>' +
+      '<span class="lp-footer-links"><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
+        (CONTACT_EMAIL ? '<a href="mailto:' + escapeHtml(CONTACT_EMAIL) + '">' + escapeHtml(CONTACT_EMAIL) + '</a>' : '') + '</span>' +
+      '<span class="mono">LOGGET I KRISTIANSAND</span>' +
     '</div></footer>';
+
+    html += '<div class="sticky-cta" id="stickyCta" hidden><button class="btn btn-primary btn-block" id="stickyCtaBtn">Kom i gang — 499 kr/mnd</button></div>';
 
     viewWrap.innerHTML = html;
 
-    var heroCta = document.getElementById('heroCta');
-    if (heroCta) heroCta.addEventListener('click', function () { setPhase(currentUser ? 'paywall' : 'signup'); });
-    var pricingCta = document.getElementById('pricingCta');
-    if (pricingCta) pricingCta.addEventListener('click', function () { setPhase(currentUser ? 'paywall' : 'signup'); });
+    function goSignup() { setPhase(currentUser ? 'paywall' : 'signup'); }
+    ['heroCta', 'pricingCta', 'ctaBandBtn', 'stickyCtaBtn'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('click', goSignup);
+    });
+
+    var range = document.getElementById('calcRange');
+    if (range) {
+      var updateCalc = function () {
+        var n = Number(range.value) || 1;
+        document.getElementById('calcN').textContent = n;
+        document.getElementById('calcUnit').textContent = n === 1 ? 'bolig' : 'boliger';
+        document.getElementById('calcPer').textContent = Math.round(499 / n) + ' kr';
+        range.style.setProperty('--fill', ((n - 1) / 19 * 100) + '%');
+      };
+      range.addEventListener('input', updateCalc);
+      updateCalc();
+    }
+
+    // Vis den faste knappen på mobil når hero-knappen har scrollet ut av bildet.
+    var heroCtaEl = document.getElementById('heroCta');
+    var stickyEl = document.getElementById('stickyCta');
+    if (heroCtaEl && stickyEl && 'IntersectionObserver' in window) {
+      var stickyObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) { stickyEl.hidden = en.isIntersecting || en.boundingClientRect.top > 0; });
+      });
+      stickyObserver.observe(heroCtaEl);
+    }
 
     initRevealObserver();
   }
@@ -793,6 +988,7 @@
           '<div class="form-field"><label for="su-email">E-post</label><input id="su-email" type="email" name="email" required autocomplete="email"></div>' +
           '<div class="form-field"><label for="su-password">Passord</label><input id="su-password" type="password" name="password" required minlength="6" autocomplete="new-password"></div>' +
           '<button type="submit" class="btn btn-primary btn-block">Opprett konto</button>' +
+          '<p class="auth-terms">Ved å opprette konto godtar du <a href="vilkar.html" target="_blank" rel="noopener">vilkårene</a> og <a href="personvern.html" target="_blank" rel="noopener">personvernerklæringen</a>.</p>' +
         '</form>' +
         '<p class="auth-switch">Har du allerede en konto? <a id="toLogin">Logg inn</a></p>' +
       '</div></div>';
@@ -868,7 +1064,8 @@
         '<li>Ubegrenset feilregistrering og logg</li>' +
         '<li>Bilder, dokumenter og kvitteringer</li>' +
         '<li>Digitale inspeksjoner med signatur</li>' +
-        '<li>Automatiske PDF-rapporter</li>' +
+        '<li>Rapporter du kan skrive ut eller lagre som PDF</li>' +
+        '<li>Vedlikeholdsplan med gjentakende oppgaver</li>' +
       '</ul>' +
       '<button class="btn btn-primary btn-block" id="activateSub">Gå til betaling</button>' +
       '<p class="demo-note">Du sendes til Stripes sikre betalingsside. Kortopplysninger lagres aldri hos oss.</p>' +
@@ -921,12 +1118,16 @@
     html += '<div class="view-head"><div><h1>Oversikt</h1><p>Status for alle boligene dine, samlet ett sted.</p></div>' +
       '<div class="view-actions"><button class="btn btn-primary" data-action="add-property">+ Ny bolig</button></div></div>';
 
+    html += onboardingChecklistHtml(properties, entries, Maintenance.all(), inspections);
+
     html += '<div class="stat-grid">' +
       statCard('BOLIGER', properties.length, '') +
       statCard('ÅPNE FEIL', openIssues.length, openIssues.length ? 'stamp-color' : 'sage-color') +
       statCard('VEDLIKEHOLD SNART', maintDue.length, maintDue.length ? 'amber-color' : 'sage-color') +
       statCard('INSPEKSJONER', inspections.length, '') +
       '</div>';
+
+    html += attentionPanelHtml();
 
     html += '<p class="section-title">SISTE HENDELSER</p>';
     if (recent.length === 0) {
@@ -948,6 +1149,88 @@
 
     viewWrap.innerHTML = html;
     bindDashboardActions();
+    bindAttentionActions();
+  }
+
+  /* ---- Krever oppmerksomhet: forfalt/kommende vedlikehold og åpne feil ---- */
+
+  function attentionItems() {
+    var today = todayISO();
+    var items = [];
+    Maintenance.all().forEach(function (m) {
+      if (m.status === 'utført') return;
+      var prop = Properties.get(m.propertyId);
+      var diff = daysBetween(today, m.dueDate); // negativ = forfalt
+      if (diff < 0) {
+        items.push({ rank: 0, sort: diff, tone: 'late', label: 'Forfalt', text: m.title, where: prop ? prop.name : '', meta: daysLabel(diff) + ' siden', go: 'maintenance' });
+      } else if (diff <= 30) {
+        items.push({ rank: 2, sort: diff, tone: 'soon', label: 'Forfaller snart', text: m.title, where: prop ? prop.name : '', meta: diff === 0 ? 'i dag' : 'om ' + daysLabel(diff), go: 'maintenance' });
+      }
+    });
+    Entries.all().forEach(function (e) {
+      if (e.type !== 'feil' || e.status === 'løst') return;
+      var prop = Properties.get(e.propertyId);
+      var age = Math.max(0, daysBetween(e.date, today));
+      items.push({ rank: 1, sort: -age, tone: 'late', label: 'Åpen feil', text: e.title, where: prop ? prop.name : '', meta: 'åpen i ' + daysLabel(age), go: 'property', propertyId: e.propertyId });
+    });
+    items.sort(function (a, b) { return a.rank - b.rank || a.sort - b.sort; });
+    return items;
+  }
+
+  function attentionPanelHtml() {
+    var items = attentionItems();
+    var html = '<p class="section-title">KREVER OPPMERKSOMHET</p>';
+    if (items.length === 0) {
+      return html + '<div class="card attention-ok"><span class="attention-check">✓</span><div><p class="entry-row-title">Alt er i orden</p><p class="entry-row-desc">Ingen forfalt vedlikehold, ingenting som forfaller de neste 30 dagene, og ingen åpne feil.</p></div></div>';
+    }
+    var max = 6;
+    html += '<div class="card attention-list">';
+    items.slice(0, max).forEach(function (it, i) {
+      html += '<button type="button" class="attention-row" data-attention="' + i + '">' +
+        '<span class="attention-dot ' + it.tone + '"></span>' +
+        '<span class="attention-main"><span class="attention-label">' + escapeHtml(it.label) + '</span><span class="attention-text">' + escapeHtml(it.text) + '</span></span>' +
+        '<span class="attention-meta">' + (it.where ? escapeHtml(it.where) + ' · ' : '') + escapeHtml(it.meta) + '</span>' +
+      '</button>';
+    });
+    if (items.length > max) html += '<p class="attention-more">+ ' + (items.length - max) + ' til. Se Vedlikehold og Logg for alt.</p>';
+    html += '</div>';
+    attentionCache = items.slice(0, max);
+    return html;
+  }
+
+  var attentionCache = [];
+
+  function bindAttentionActions() {
+    viewWrap.querySelectorAll('[data-attention]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var it = attentionCache[Number(btn.dataset.attention)];
+        if (!it) return;
+        if (it.go === 'property' && it.propertyId) setView('property-detail', { propertyId: it.propertyId });
+        else setView('maintenance');
+      });
+    });
+  }
+
+  /* ---- Kom i gang-sjekkliste (forsvinner når alt er gjort) ---- */
+
+  function onboardingChecklistHtml(properties, entries, maint, inspections) {
+    var steps = [
+      { done: properties.length > 0, label: 'Registrer en bolig', hint: 'Adresse, rom og leietaker.', action: 'add-property', btn: '+ Ny bolig' },
+      { done: entries.length > 0, label: 'Loggfør en hendelse', hint: 'En feil, en kvittering eller et dokument, gjerne med bilde.', action: 'add-entry', btn: '+ Ny hendelse' },
+      { done: maint.length > 0, label: 'Planlegg vedlikehold', hint: 'F.eks. røykvarsler eller takrenner, med gjentakelse.', action: 'add-maintenance', btn: 'Planlegg' },
+      { done: inspections.length > 0, label: 'Gjennomfør en inspeksjon', hint: 'Inn- eller utflytting med signatur fra begge parter.', action: 'start-inspection', btn: 'Start' }
+    ];
+    var doneCount = steps.filter(function (st) { return st.done; }).length;
+    if (doneCount === steps.length) return '';
+    var html = '<div class="card onboarding"><div class="onboarding-head"><p class="section-title" style="margin:0;">KOM I GANG</p><span class="mono onboarding-count">' + doneCount + ' / ' + steps.length + '</span></div>' +
+      '<div class="onboarding-bar"><span style="width:' + Math.round(doneCount / steps.length * 100) + '%"></span></div><ul class="onboarding-steps">';
+    steps.forEach(function (st) {
+      html += '<li class="' + (st.done ? 'done' : '') + '"><span class="onboarding-tick">' + (st.done ? '✓' : '') + '</span>' +
+        '<span class="onboarding-text"><b>' + st.label + '</b><small>' + st.hint + '</small></span>' +
+        (st.done ? '' : '<button type="button" class="btn btn-ghost btn-small" data-onboard="' + st.action + '">' + st.btn + '</button>') + '</li>';
+    });
+    html += '</ul></div>';
+    return html;
   }
 
   function statCard(label, value, colorClass) {
@@ -969,6 +1252,15 @@
   }
 
   function bindDashboardActions() {
+    viewWrap.querySelectorAll('[data-onboard]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var a = b.dataset.onboard;
+        if (a === 'add-property') openPropertyForm();
+        else if (a === 'add-entry') openEntryForm({});
+        else if (a === 'add-maintenance') openMaintenanceForm({});
+        else if (a === 'start-inspection') { setView('inspection'); startInspectionWizard(); }
+      });
+    });
     var addBtn = viewWrap.querySelector('[data-action="add-property"]');
     if (addBtn) addBtn.addEventListener('click', function () { openPropertyForm(); });
     var seedBtn = viewWrap.querySelector('[data-action="seed-demo"]');
@@ -1045,15 +1337,19 @@
       '<button class="btn btn-ghost btn-small" data-action="quick-inspeksjon">+ Start inspeksjon</button>' +
     '</div>';
 
-    html += '<p class="section-title">HISTORIKK FOR BOLIGEN</p>';
+    html += '<div class="section-title-row"><p class="section-title" style="margin:0;">HISTORIKK FOR BOLIGEN</p>' +
+      (entries.length ? '<button class="btn btn-ghost btn-small no-print" data-action="print-history">Skriv ut / lagre som PDF</button>' : '') + '</div>';
     if (entries.length === 0) {
       html += '<div class="empty-state"><p class="empty-title">Ingen hendelser registrert</p><p class="empty-body">Feil, vedlikehold og dokumenter for denne boligen vises her.</p></div>';
     } else {
-      html += '<div class="card">';
+      html += '<div id="printArea" class="history-print">' +
+        '<div class="print-only history-print-head"><p class="doc-eyebrow">EIENDOMSLOGGA · HISTORIKK</p><h2>' + escapeHtml(p.name) + '</h2>' +
+        '<p>' + escapeHtml(p.address || '') + (p.tenantName ? ' · Leietaker: ' + escapeHtml(p.tenantName) : '') + ' · Utskrift ' + formatDateNO(todayISO()) + '</p></div>' +
+        '<div class="card">';
       entries.forEach(function (e) {
         html += timelineItem(e);
       });
-      html += '</div>';
+      html += '</div></div>';
     }
 
     viewWrap.innerHTML = html;
@@ -1061,6 +1357,8 @@
     viewWrap.querySelector('[data-action="back-to-properties"]').addEventListener('click', function () { setView('properties'); });
     viewWrap.querySelector('[data-action="edit-property"]').addEventListener('click', function () { openPropertyForm(p); });
     viewWrap.querySelector('[data-action="delete-property"]').addEventListener('click', function () { confirmDeleteProperty(p); });
+    var printHistoryBtn = viewWrap.querySelector('[data-action="print-history"]');
+    if (printHistoryBtn) printHistoryBtn.addEventListener('click', function () { window.print(); });
     viewWrap.querySelector('[data-action="quick-feil"]').addEventListener('click', function () { openEntryForm({ propertyId: p.id, type: 'feil' }); });
     viewWrap.querySelector('[data-action="quick-dokument"]').addEventListener('click', function () { openEntryForm({ propertyId: p.id, type: 'dokument' }); });
     viewWrap.querySelector('[data-action="quick-vedlikehold"]').addEventListener('click', function () { openMaintenanceForm({ propertyId: p.id }); });
@@ -1069,12 +1367,17 @@
     bindTimelineActions();
   }
 
-  function timelineItem(e) {
+  function timelineItem(e, showProperty) {
+    var propPrefix = '';
+    if (showProperty) {
+      var tp = Properties.get(e.propertyId);
+      propPrefix = escapeHtml(tp ? tp.name : '—') + ' · ';
+    }
     var html = '<div class="timeline-item" data-entry-id="' + e.id + '">' +
       '<div class="timeline-date mono">' + formatDateNO(e.date) + '</div>' +
       '<div class="timeline-body">' +
         '<div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">' +
-          '<div><span class="type-tag">' + typeLabel(e.type) + '</span><p class="entry-row-title">' + escapeHtml(e.title) + '</p></div>' +
+          '<div><span class="type-tag">' + propPrefix + typeLabel(e.type) + '</span><p class="entry-row-title">' + escapeHtml(e.title) + '</p></div>' +
           '<div style="display:flex; align-items:center; gap:8px;">' + statusBadge(e.status) + '</div>' +
         '</div>' +
         (e.description ? '<p class="entry-row-desc">' + escapeHtml(e.description) + '</p>' : '') +
@@ -1101,6 +1404,7 @@
         html += '<button class="btn btn-ghost btn-small" data-action="mark-unresolved" data-id="' + e.id + '">Gjenåpne</button>';
       }
     }
+    html += '<button class="btn btn-ghost btn-small" data-action="edit-entry" data-id="' + e.id + '">Rediger</button>';
     html += '<button class="btn btn-ghost btn-small" data-action="delete-entry" data-id="' + e.id + '">Slett</button>';
     html += '</div>';
 
@@ -1127,6 +1431,12 @@
           showToast('Gjenåpnet.');
           render();
         } catch (err) { btn.disabled = false; }
+      });
+    });
+    viewWrap.querySelectorAll('[data-action="edit-entry"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var entry = Entries.get(btn.dataset.id);
+        if (entry) openEntryForm({ existing: entry });
       });
     });
     viewWrap.querySelectorAll('[data-action="delete-entry"]').forEach(function (btn) {
@@ -1218,10 +1528,18 @@
   var pendingPhotos = [];
   var pendingDocs = [];
 
+  // Ny hendelse:  openEntryForm({}) eller openEntryForm({ propertyId, type })
+  // Rediger:      openEntryForm({ existing: <hendelse> })
   function openEntryForm(defaults) {
     defaults = defaults || {};
+    var existing = defaults.existing || null;
+    var isEdit = !!existing;
+    var x = existing || {};
     pendingPhotos = [];
     pendingDocs = [];
+    var keptPhotos = isEdit ? (x.photos || []).slice() : [];
+    var keptDocs = isEdit ? (x.documents || []).slice() : [];
+    if (isEdit) defaults = { propertyId: x.propertyId, type: x.type };
     var properties = Properties.all();
 
     if (properties.length === 0) {
@@ -1238,7 +1556,7 @@
     var type = defaults.type || 'feil';
 
     var html =
-      '<div class="modal-head"><h2>Ny hendelse</h2><button class="modal-close" data-action="close-modal" aria-label="Lukk">&times;</button></div>' +
+      '<div class="modal-head"><h2>' + (isEdit ? 'Rediger hendelse' : 'Ny hendelse') + '</h2><button class="modal-close" data-action="close-modal" aria-label="Lukk">&times;</button></div>' +
       '<form id="entryForm">' +
         '<div class="form-grid">' +
           '<div class="form-field"><label for="ef-property">Bolig</label>' +
@@ -1251,20 +1569,20 @@
             '</select></div>' +
         '</div>' +
         '<div class="form-field"><label for="ef-title">Tittel</label>' +
-          '<input id="ef-title" name="title" placeholder="F.eks. Vannlekkasje under kjøkkenvask" required></div>' +
+          '<input id="ef-title" name="title" value="' + escapeHtml(x.title || '') + '" placeholder="F.eks. Vannlekkasje under kjøkkenvask" required></div>' +
         '<div class="form-field"><label for="ef-desc">Beskrivelse</label>' +
-          '<textarea id="ef-desc" name="description" placeholder="Hva gjelder saken? Hva er gjort eller må gjøres?"></textarea></div>' +
+          '<textarea id="ef-desc" name="description" placeholder="Hva gjelder saken? Hva er gjort eller må gjøres?">' + escapeHtml(x.description || '') + '</textarea></div>' +
         '<div class="form-grid">' +
           '<div class="form-field"><label for="ef-date">Dato</label>' +
-            '<input id="ef-date" name="date" type="date" value="' + todayISO() + '"></div>' +
+            '<input id="ef-date" name="date" type="date" value="' + escapeHtml(x.date || todayISO()) + '"></div>' +
           '<div class="form-field"><label for="ef-cost">Kostnad (valgfritt)</label>' +
-            '<input id="ef-cost" name="cost" type="number" min="0" placeholder="kr"></div>' +
+            '<input id="ef-cost" name="cost" type="number" min="0" value="' + (x.cost ? escapeHtml(String(x.cost)) : '') + '" placeholder="kr"></div>' +
         '</div>' +
         '<div class="form-field"><label for="ef-status">Status</label>' +
           '<select id="ef-status" name="status">' +
-            '<option value="åpen">Åpen</option>' +
-            '<option value="pågår">Pågår</option>' +
-            '<option value="løst">Løst</option>' +
+            '<option value="åpen"' + (x.status === 'åpen' ? ' selected' : '') + '>Åpen</option>' +
+            '<option value="pågår"' + (x.status === 'pågår' ? ' selected' : '') + '>Pågår</option>' +
+            '<option value="løst"' + (x.status === 'løst' ? ' selected' : '') + '>Løst</option>' +
           '</select></div>' +
         '<div class="form-field"><label>Bilder</label>' +
           '<label class="file-drop" for="ef-photos">Klikk for å laste opp bilder<input id="ef-photos" type="file" accept="image/*" multiple></label>' +
@@ -1276,7 +1594,7 @@
         '</div>' +
         '<div class="form-actions">' +
           '<button type="button" class="btn btn-ghost" data-action="close-modal">Avbryt</button>' +
-          '<button type="submit" class="btn btn-primary">Lagre hendelse</button>' +
+          '<button type="submit" class="btn btn-primary">' + (isEdit ? 'Lagre endringer' : 'Lagre hendelse') + '</button>' +
         '</div>' +
       '</form>';
 
@@ -1302,7 +1620,10 @@
     function renderPhotoPreview() {
       var el = modalEl.querySelector('#ef-photo-preview');
       if (!el) return;
-      el.innerHTML = pendingPhotos.map(function (p, i) {
+      el.innerHTML = keptPhotos.map(function (p, i) {
+        return '<span class="thumb-wrap"><img class="thumb" src="' + escapeHtml(p.url) + '" alt="' + escapeHtml(p.name) + '">' +
+          '<button type="button" class="thumb-remove" data-action="remove-kept-photo" data-idx="' + i + '" aria-label="Fjern bilde">&times;</button></span>';
+      }).join('') + pendingPhotos.map(function (p, i) {
         return '<span class="thumb-wrap"><img class="thumb" src="' + p.previewUrl + '" alt="' + escapeHtml(p.name) + '">' +
           '<button type="button" class="thumb-remove" data-action="remove-photo" data-idx="' + i + '" aria-label="Fjern bilde">&times;</button></span>';
       }).join('');
@@ -1312,11 +1633,20 @@
           renderPhotoPreview();
         });
       });
+      el.querySelectorAll('[data-action="remove-kept-photo"]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          keptPhotos.splice(Number(btn.dataset.idx), 1);
+          renderPhotoPreview();
+        });
+      });
     }
     function renderDocPreview() {
       var el = modalEl.querySelector('#ef-doc-preview');
       if (!el) return;
-      el.innerHTML = pendingDocs.map(function (d, i) {
+      el.innerHTML = keptDocs.map(function (d, i) {
+        return '<span class="doc-chip">' + escapeHtml(d.name) +
+          '<button type="button" class="doc-chip-remove" data-action="remove-kept-doc" data-idx="' + i + '" aria-label="Fjern dokument">&times;</button></span>';
+      }).join('') + pendingDocs.map(function (d, i) {
         return '<span class="doc-chip">' + escapeHtml(d.name) +
           '<button type="button" class="doc-chip-remove" data-action="remove-doc" data-idx="' + i + '" aria-label="Fjern dokument">&times;</button></span>';
       }).join('');
@@ -1326,7 +1656,15 @@
           renderDocPreview();
         });
       });
+      el.querySelectorAll('[data-action="remove-kept-doc"]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          keptDocs.splice(Number(btn.dataset.idx), 1);
+          renderDocPreview();
+        });
+      });
     }
+    renderPhotoPreview();
+    renderDocPreview();
 
     modalEl.querySelector('#entryForm').addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -1347,20 +1685,70 @@
           date: fd.get('date') || todayISO(),
           cost: fd.get('cost') ? Number(fd.get('cost')) : 0,
           status: fd.get('status'),
-          photos: uploadedPhotos,
-          documents: uploadedDocs
+          photos: keptPhotos.concat(uploadedPhotos),
+          documents: keptDocs.concat(uploadedDocs)
         };
-        await Entries.add(payload);
-        showToast('Hendelse lagret.');
+        if (isEdit) {
+          await Entries.update(x.id, payload);
+          showToast('Hendelse oppdatert.');
+        } else {
+          await Entries.add(payload);
+          showToast('Hendelse lagret.');
+        }
         closeModal();
         render();
       } catch (err) {
-        submitBtn.disabled = false; submitBtn.textContent = 'Lagre hendelse';
+        submitBtn.disabled = false; submitBtn.textContent = isEdit ? 'Lagre endringer' : 'Lagre hendelse';
       }
     });
   }
 
   /* ---------------- Log view (all entries) ---------------- */
+
+  function filteredLogEntries() {
+    var f = state.logFilter;
+    var q = (f.q || '').trim().toLowerCase();
+    return Entries.all().filter(function (e) {
+      if (f.propertyId && e.propertyId !== f.propertyId) return false;
+      if (f.type && e.type !== f.type) return false;
+      if (f.status && e.status !== f.status) return false;
+      if (f.year && String(e.date || '').slice(0, 4) !== f.year) return false;
+      if (q) {
+        var prop = Properties.get(e.propertyId);
+        var hay = ((e.title || '') + ' ' + (e.description || '') + ' ' + (prop ? prop.name : '')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function csvCell(v) {
+    if (typeof v === 'number') return String(v);
+    var t = String(v === undefined || v === null ? '' : v);
+    // Tekst som starter med = + - @ kan tolkes som formel i Excel; legg på apostrof.
+    if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+    return '"' + t.replace(/"/g, '""') + '"';
+  }
+
+  // Semikolon-separert med BOM, slik at norsk Excel åpner æøå og kolonner riktig.
+  function exportLogCsv(list) {
+    var rows = [['Dato', 'Bolig', 'Type', 'Tittel', 'Beskrivelse', 'Status', 'Kostnad (kr)']];
+    list.forEach(function (e) {
+      var prop = Properties.get(e.propertyId);
+      rows.push([e.date, prop ? prop.name : '', typeLabel(e.type), e.title, e.description || '', e.status || '', e.cost ? Number(e.cost) : 0]);
+    });
+    var csv = '﻿' + rows.map(function (r) { return r.map(csvCell).join(';'); }).join('\r\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'eiendomslogga-logg-' + todayISO() + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Loggen er lastet ned som CSV.');
+  }
 
   function renderLog() {
     var properties = Properties.all();
@@ -1371,7 +1759,14 @@
       return '<option value="' + p.id + '"' + (state.logFilter.propertyId === p.id ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
     }).join('');
 
+    var years = {};
+    Entries.all().forEach(function (e) { if (e.date) years[String(e.date).slice(0, 4)] = true; });
+    var yearOptions = '<option value="">Alle år</option>' + Object.keys(years).sort().reverse().map(function (y) {
+      return '<option value="' + y + '"' + (state.logFilter.year === y ? ' selected' : '') + '>' + y + '</option>';
+    }).join('');
+
     html += '<div class="filter-bar">' +
+      '<input type="search" id="filter-q" class="filter-search" placeholder="Søk i logg…" value="' + escapeHtml(state.logFilter.q || '') + '" aria-label="Søk i logg">' +
       '<select id="filter-property">' + propOptions + '</select>' +
       '<select id="filter-type">' +
         '<option value="">Alle typer</option>' +
@@ -1385,33 +1780,22 @@
         '<option value="pågår"' + (state.logFilter.status === 'pågår' ? ' selected' : '') + '>Pågår</option>' +
         '<option value="løst"' + (state.logFilter.status === 'løst' ? ' selected' : '') + '>Løst</option>' +
       '</select>' +
+      '<select id="filter-year">' + yearOptions + '</select>' +
     '</div>';
 
-    var entries = Entries.all().filter(function (e) {
-      if (state.logFilter.propertyId && e.propertyId !== state.logFilter.propertyId) return false;
-      if (state.logFilter.type && e.type !== state.logFilter.type) return false;
-      if (state.logFilter.status && e.status !== state.logFilter.status) return false;
-      return true;
-    });
+    var entries = filteredLogEntries();
 
     if (properties.length === 0) {
       html += '<div class="empty-state"><p class="empty-title">Ingen boliger registrert</p><p class="empty-body">Legg til en bolig for å begynne å loggføre.</p><button class="btn btn-primary" data-action="add-property">+ Registrer bolig</button></div>';
     } else if (entries.length === 0) {
       html += '<div class="empty-state"><p class="empty-title">Ingen hendelser funnet</p><p class="empty-body">Prøv å endre filtrene, eller registrer en ny hendelse.</p></div>';
     } else {
+      var totalCost = entries.reduce(function (sum, e) { return sum + (Number(e.cost) || 0); }, 0);
+      html += '<div class="log-summary"><span><b>' + entries.length + '</b> ' + (entries.length === 1 ? 'hendelse' : 'hendelser') + '</span>' +
+        '<span>Kostnader: <b data-role="log-total">' + money(totalCost) + '</b></span>' +
+        '<button type="button" class="btn btn-ghost btn-small" data-action="export-log-csv">Last ned som CSV</button></div>';
       html += '<div class="card">';
-      entries.forEach(function (e) {
-        var prop = Properties.get(e.propertyId);
-        html += '<div class="timeline-item">' +
-          '<div class="timeline-date mono">' + formatDateNO(e.date) + '</div>' +
-          '<div class="timeline-body">' +
-            '<div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">' +
-              '<div><span class="type-tag">' + escapeHtml(prop ? prop.name : '—') + ' · ' + typeLabel(e.type) + '</span><p class="entry-row-title">' + escapeHtml(e.title) + '</p></div>' +
-              statusBadge(e.status) +
-            '</div>' +
-            (e.description ? '<p class="entry-row-desc">' + escapeHtml(e.description) + '</p>' : '') +
-          '</div></div>';
-      });
+      entries.forEach(function (e) { html += timelineItem(e, true); });
       html += '</div>';
     }
 
@@ -1421,13 +1805,32 @@
     if (addBtn) addBtn.addEventListener('click', function () { openEntryForm({}); });
     var addPropBtn = viewWrap.querySelector('[data-action="add-property"]');
     if (addPropBtn) addPropBtn.addEventListener('click', function () { openPropertyForm(); });
+    var csvBtn = viewWrap.querySelector('[data-action="export-log-csv"]');
+    if (csvBtn) csvBtn.addEventListener('click', function () { exportLogCsv(filteredLogEntries()); });
 
     var fp = viewWrap.querySelector('#filter-property');
     var ft = viewWrap.querySelector('#filter-type');
     var fs = viewWrap.querySelector('#filter-status');
+    var fy = viewWrap.querySelector('#filter-year');
+    var fq = viewWrap.querySelector('#filter-q');
     if (fp) fp.addEventListener('change', function () { state.logFilter.propertyId = fp.value; render(); });
     if (ft) ft.addEventListener('change', function () { state.logFilter.type = ft.value; render(); });
     if (fs) fs.addEventListener('change', function () { state.logFilter.status = fs.value; render(); });
+    if (fy) fy.addEventListener('change', function () { state.logFilter.year = fy.value; render(); });
+    if (fq) {
+      var qTimer = null;
+      fq.addEventListener('input', function () {
+        clearTimeout(qTimer);
+        qTimer = setTimeout(function () {
+          state.logFilter.q = fq.value;
+          render();
+          var again = viewWrap.querySelector('#filter-q');
+          if (again) { again.focus(); try { again.setSelectionRange(again.value.length, again.value.length); } catch (err) {} }
+        }, 220);
+      });
+    }
+
+    bindTimelineActions();
   }
 
   /* ---------------- Maintenance view ---------------- */
@@ -1479,8 +1882,8 @@
       btn.addEventListener('click', async function () {
         btn.disabled = true;
         try {
-          await Maintenance.update(btn.dataset.id, { status: 'utført' });
-          showToast('Vedlikehold merket som utført.');
+          var next = await completeMaintenance(Maintenance.get(btn.dataset.id));
+          showToast(next ? 'Utført. Neste er planlagt ' + formatDateNO(next) + '.' : 'Vedlikehold merket som utført.');
           render();
         } catch (err) { btn.disabled = false; }
       });
@@ -1569,8 +1972,17 @@
       try {
         if (isEdit) {
           payload.status = fd.get('status');
-          await Maintenance.update(m.id, payload);
-          showToast('Vedlikehold oppdatert.');
+          var wasOpen = m.status !== 'utført';
+          var nextPlanned = null;
+          if (payload.status === 'utført' && wasOpen) {
+            // Redigert fra planlagt til utført: lagre feltene først, og planlegg så neste runde hvis oppgaven gjentas.
+            payload.status = 'planlagt';
+            await Maintenance.update(m.id, payload);
+            nextPlanned = await completeMaintenance(Maintenance.get(m.id), payload.recurring);
+          } else {
+            await Maintenance.update(m.id, payload);
+          }
+          showToast(nextPlanned ? 'Utført. Neste er planlagt ' + formatDateNO(nextPlanned) + '.' : 'Vedlikehold oppdatert.');
         } else {
           await Maintenance.add(payload);
           showToast('Vedlikehold planlagt.');
