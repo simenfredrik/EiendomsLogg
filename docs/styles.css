@@ -748,3 +748,39 @@ html { scroll-behavior: smooth; }
 }
 .marketing-nav-links a.btn-primary { color: #1A0D06; }
 .marketing-nav-links a.btn-primary:hover { color: #1A0D06; }
+
+/* ---- Levende forhåndsvisning ---- */
+.attention-dot.ok { background: var(--green); }
+.mock-window.live .mock-row { animation: mockIn .5s ease both; }
+.mock-window.live .mock-row:nth-child(2) { animation-delay: .15s; }
+.mock-window.live .mock-row:nth-child(3) { animation-delay: .3s; }
+.mock-window.live .mock-stats div { animation: mockIn .5s ease both; }
+.mock-window.live .mock-stats div:nth-child(2) { animation-delay: .08s; }
+.mock-window.live .mock-stats div:nth-child(3) { animation-delay: .16s; }
+.mock-window.live .mock-stats div:nth-child(4) { animation-delay: .24s; }
+@keyframes mockIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.mock-row.resolved { animation: rowResolved 1.4s ease both !important; }
+@keyframes rowResolved { 0% { background: rgba(78,154,110,.35); } 100% { background: rgba(78,154,110,.08); } }
+.mock-stats b.bump { display: inline-block; animation: bump .5s ease; }
+@keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.5); } 100% { transform: scale(1); } }
+.mock-report.live .sig-path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: sigDraw 1.6s ease forwards; }
+.mock-report.live .sig-path.sig2 { animation-delay: 1.7s; }
+@keyframes sigDraw { to { stroke-dashoffset: 0; } }
+.mock-report.live .mock-stamp { animation: stampIn .45s cubic-bezier(.2,1.4,.4,1) 3.5s both; }
+@keyframes stampIn { 0% { opacity: 0; transform: rotate(-14deg) scale(2.2); } 100% { opacity: 1; transform: rotate(-14deg) scale(1); } }
+.mock-report.live .mock-room { animation: mockIn .45s ease both; }
+.mock-report.live .mock-room:nth-of-type(1) { animation-delay: .1s; }
+.mock-report.live .mock-room:nth-of-type(2) { animation-delay: .35s; }
+.mock-report.live .mock-room:nth-of-type(3) { animation-delay: .6s; }
+.mock-report.live .mock-room:nth-of-type(4) { animation-delay: .85s; }
+@media (prefers-reduced-motion: reduce) {
+  .mock-window.live *, .mock-report.live * { animation: none !important; }
+}
+
+/* ---- Hero-video (Pexels, gratis lisens) ---- */
+.lp-hero.has-video { position: relative; background: #0E2540 url(hero-poster.jpg) center / cover no-repeat; }
+.hero-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+.hero-video-shade { position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(14,37,64,.95) 0%, rgba(14,37,64,.8) 45%, rgba(14,37,64,.4) 100%); }
+.lp-hero.has-video .lp-inner { position: relative; z-index: 2; }
+@media (max-width: 860px) { .hero-video-shade { background: rgba(14,37,64,.84); } }
+@media (prefers-reduced-motion: reduce) { .hero-video { display: none; } }

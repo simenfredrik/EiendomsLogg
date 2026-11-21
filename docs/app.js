@@ -729,17 +729,17 @@
     function row(tone, label, text, meta) {
       return '<div class="mock-row"><span class="attention-dot ' + tone + '"></span><span class="mock-row-main"><em>' + label + '</em>' + text + '</span><span class="mock-row-meta">' + meta + '</span></div>';
     }
-    return '<div class="mock-window" aria-hidden="true">' +
+    return '<div class="mock-window" id="liveDash" aria-hidden="true">' +
       '<div class="mock-bar"><span></span><span></span><span></span><i>eiendomslogga.no</i></div>' +
       '<div class="mock-body">' +
         '<div class="mock-stats">' +
-          '<div><small>BOLIGER</small><b>4</b></div><div><small>ÅPNE FEIL</small><b class="o">2</b></div>' +
-          '<div><small>VEDLIKEHOLD SNART</small><b class="a">3</b></div><div><small>INSPEKSJONER</small><b>6</b></div>' +
+          '<div><small>BOLIGER</small><b data-count="4">4</b></div><div><small>ÅPNE FEIL</small><b class="o" id="liveOpen" data-count="2">2</b></div>' +
+          '<div><small>VEDLIKEHOLD SNART</small><b class="a" data-count="3">3</b></div><div><small>INSPEKSJONER</small><b data-count="6">6</b></div>' +
         '</div>' +
         '<p class="mock-title">KREVER OPPMERKSOMHET</p>' +
         '<div class="mock-list">' +
           row('late', 'Forfalt', 'Røykvarsler', 'Storgata 12 · 9 dager siden') +
-          row('late', 'Åpen feil', 'Vannlekkasje ved kjøkkenvask', 'Storgata 12 · åpen i 3 dager') +
+          row('late', 'Åpen feil', 'Vannlekkasje ved kjøkkenvask', 'Storgata 12 · åpen i 3 dager').replace('class="mock-row"', 'class="mock-row" id="liveRow"') +
           row('soon', 'Forfaller snart', 'Rens av takrenner', 'Kystveien 87 · om 12 dager') +
         '</div>' +
       '</div>' +
@@ -748,13 +748,13 @@
 
   function previewReportHtml() {
     function r(name, cond, cls) { return '<div class="mock-room"><span>' + name + '</span><b class="' + cls + '">' + cond + '</b></div>'; }
-    return '<div class="mock-report" aria-hidden="true">' +
+    return '<div class="mock-report" id="liveReport" aria-hidden="true">' +
       '<p class="mock-report-eyebrow">EIENDOMSLOGGA · INNFLYTTINGSRAPPORT</p>' +
       '<h3>Storgata 12</h3><p class="mock-report-meta">12.03.2026 · Leietaker: Kari Nordmann</p>' +
       r('Stue', 'GOD', 'g') + r('Kjøkken', 'OK', 'o') + r('Bad', 'GOD', 'g') + r('Soverom', 'GOD', 'g') +
       '<div class="mock-sign">' +
-        '<svg viewBox="0 0 160 50"><path d="M6 36 C16 6 26 46 36 22 S56 8 66 32 S92 14 100 28 S128 24 152 18" fill="none" stroke="#26364A" stroke-width="2" stroke-linecap="round"/></svg>' +
-        '<svg viewBox="0 0 160 50"><path d="M6 32 C20 10 30 44 46 24 S74 10 84 30 S116 18 152 26" fill="none" stroke="#26364A" stroke-width="2" stroke-linecap="round"/></svg>' +
+        '<svg viewBox="0 0 160 50"><path class="sig-path" pathLength="1" d="M6 36 C16 6 26 46 36 22 S56 8 66 32 S92 14 100 28 S128 24 152 18" fill="none" stroke="#26364A" stroke-width="2" stroke-linecap="round"/></svg>' +
+        '<svg viewBox="0 0 160 50"><path class="sig-path sig2" pathLength="1" d="M6 32 C20 10 30 44 46 24 S74 10 84 30 S116 18 152 26" fill="none" stroke="#26364A" stroke-width="2" stroke-linecap="round"/></svg>' +
       '</div><div class="mock-sign-labels"><span>LEIETAKER</span><span>UTLEIER</span></div>' +
       '<div class="mock-stamp"><span>GODKJENT</span></div>' +
     '</div>';
@@ -785,7 +785,11 @@
   function renderLanding() {
     var html = '';
 
-    html += '<section class="lp-section lp-hero"><div class="lp-inner lp-hero-grid">' +
+    html += '<section class="lp-section lp-hero has-video">' +
+      '<video class="hero-video" autoplay muted loop playsinline preload="metadata" poster="hero-poster.jpg" aria-hidden="true" tabindex="-1">' +
+        '<source src="hero.webm" type="video/webm"><source src="hero.mp4" type="video/mp4"></video>' +
+      '<div class="hero-video-shade"></div>' +
+      '<div class="lp-inner lp-hero-grid">' +
       '<div>' +
         '<p class="eyebrow">FOR SMÅ OG MELLOMSTORE UTLEIERE</p>' +
         '<h1>Slutt å lete etter kvitteringen i en e‑posttråd.</h1>' +
@@ -885,7 +889,7 @@
     '</div></section>';
 
     html += '<footer class="lp-footer"><div class="lp-inner lp-footer-inner">' +
-      '<span>© 2026 Enkel Orden AS · Org.nr. 838 591 892</span>' +
+      '<span>© 2026 Enkel Orden AS · Org.nr. 838 591 892 · Videoklipp: RDNE Stock project / Pexels</span>' +
       '<span class="lp-footer-links"><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
         (CONTACT_EMAIL ? '<a href="mailto:' + escapeHtml(CONTACT_EMAIL) + '">' + escapeHtml(CONTACT_EMAIL) + '</a>' : '') + '</span>' +
       '<span class="mono">LOGGET I KRISTIANSAND</span>' +
@@ -925,6 +929,88 @@
     }
 
     initRevealObserver();
+    initLivePreview();
+  }
+
+  // «Levende» forhåndsvisning: animasjonene starter når eksemplene kommer til syne, og stopper når de forsvinner.
+  function initLivePreview() {
+    var dash = document.getElementById('liveDash');
+    var report = document.getElementById('liveReport');
+    if (!dash && !report) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) return;
+
+    var dashTimers = [], reportTimers = [];
+    function laterIn(list, fn, ms) { list.push(setTimeout(fn, ms)); }
+    function clearList(list) { list.forEach(clearTimeout); list.length = 0; }
+
+    function countUp(el, to) {
+      var start = null, dur = 900;
+      function step(ts) {
+        if (start === null) start = ts;
+        var t = Math.min(1, (ts - start) / dur);
+        el.textContent = Math.round(to * (1 - Math.pow(1 - t, 3)));
+        if (t < 1) requestAnimationFrame(step);
+      }
+      el.textContent = '0';
+      requestAnimationFrame(step);
+    }
+
+    function runDash() {
+      clearList(dashTimers);
+      var row = document.getElementById('liveRow');
+      var open = document.getElementById('liveOpen');
+      var label = row && row.querySelector('em');
+      var dot = row && row.querySelector('.attention-dot');
+      var meta = row && row.querySelector('.mock-row-meta');
+      var main = row && row.querySelector('.mock-row-main');
+      // Nullstill
+      dash.classList.remove('live');
+      void dash.offsetWidth;
+      dash.classList.add('live');
+      dash.querySelectorAll('[data-count]').forEach(function (b) { countUp(b, Number(b.getAttribute('data-count'))); });
+      if (row) {
+        row.classList.remove('resolved');
+        if (dot) dot.className = 'attention-dot late';
+        if (label) label.textContent = 'Åpen feil';
+        if (meta) meta.textContent = 'Storgata 12 · åpen i 3 dager';
+      }
+      // Etter 3,5 s: feilen blir løst, og tallet går ned
+      laterIn(dashTimers, function () {
+        if (!row) return;
+        row.classList.add('resolved');
+        if (dot) dot.className = 'attention-dot ok';
+        if (label) label.textContent = 'Løst nå';
+        if (meta) meta.textContent = 'Storgata 12 · registrert av deg';
+        if (open) { open.textContent = '1'; open.classList.remove('bump'); void open.offsetWidth; open.classList.add('bump'); }
+      }, 3500);
+      laterIn(dashTimers, runDash, 9000);
+    }
+
+    function runReport() {
+      clearList(reportTimers);
+      report.classList.remove('live');
+      void report.offsetWidth;
+      report.classList.add('live');
+      laterIn(reportTimers, runReport, 11000);
+    }
+
+    var seen = { dash: false, report: false };
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        var key = en.target === dash ? 'dash' : 'report';
+        if (en.isIntersecting && !seen[key]) {
+          seen[key] = true;
+          if (key === 'dash') runDash(); else runReport();
+        } else if (!en.isIntersecting && seen[key]) {
+          seen[key] = false;
+          if (key === 'dash') { clearList(dashTimers); dash.classList.remove('live'); }
+          else { clearList(reportTimers); report.classList.remove('live'); }
+        }
+      });
+    }, { threshold: 0.4 });
+    if (dash) io.observe(dash);
+    if (report) io.observe(report);
   }
 
   function initRevealObserver() {
