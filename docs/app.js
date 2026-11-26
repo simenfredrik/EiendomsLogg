@@ -981,7 +981,7 @@
 
     html += '<footer class="lp-footer"><div class="lp-inner lp-footer-inner">' +
       '<span>© 2026 Enkel Orden AS · Org.nr. 838 591 892 · Videoklipp: RDNE Stock project / Pexels</span>' +
-      '<span class="lp-footer-links"><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
+      '<span class="lp-footer-links"><a href="innflyttingsprotokoll.html">Gratis sjekkliste for innflytting</a><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
         (CONTACT_EMAIL ? '<a href="mailto:' + escapeHtml(CONTACT_EMAIL) + '">' + escapeHtml(CONTACT_EMAIL) + '</a>' : '') + '</span>' +
       '<span class="mono">LOGGET I KRISTIANSAND</span>' +
     '</div></footer>';
@@ -2585,7 +2585,8 @@
       if (session) {
         await afterAuthSuccess();
       } else {
-        phase = 'landing';
+        var startParam = new URLSearchParams(window.location.search).get('start');
+        phase = (startParam === 'signup' || startParam === 'login') ? startParam : 'landing';
         applyViewWrapClass();
         renderHeader();
         renderPhaseView();
