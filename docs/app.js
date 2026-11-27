@@ -433,6 +433,20 @@
     return false;
   }
 
+  var TRIAL_DAYS = 14;
+
+  function trialDaysLeft() {
+    if (!currentUser || !currentUser.createdAt) return 0;
+    var created = new Date(currentUser.createdAt).getTime();
+    if (isNaN(created)) return 0;
+    var msLeft = created + TRIAL_DAYS * 86400000 - Date.now();
+    return msLeft > 0 ? Math.ceil(msLeft / 86400000) : 0;
+  }
+
+  function hasAccess() {
+    return !!(currentUser && (currentUser.subscribed || trialDaysLeft() > 0));
+  }
+
   async function afterAuthSuccess() {
     var userRes = await sb.auth.getUser();
     var authUser = userRes.data && userRes.data.user;
@@ -444,7 +458,8 @@
       id: authUser.id,
       email: authUser.email,
       name: profile.name || metaName || authUser.email,
-      subscribed: !!profile.subscribed
+      subscribed: !!profile.subscribed,
+      createdAt: authUser.created_at
     };
 
     var checkoutStatus = getCheckoutStatusFromUrl();
@@ -463,7 +478,7 @@
     state.selectedReportId = null;
     state.wizard = null;
     showToast('Velkommen, ' + currentUser.name + '.');
-    setPhase(currentUser.subscribed ? 'app' : 'paywall');
+    setPhase(hasAccess() ? 'app' : 'paywall');
   }
 
   async function handleLogout() {
@@ -558,7 +573,7 @@
             (phase === 'landing' ? '<a class="nav-anchor" href="#slik-fungerer-det">Slik fungerer det</a><a class="nav-anchor" href="#priser">Priser</a><a class="nav-anchor" href="#sporsmal">Spørsmål</a>' : '') +
             (showLogout
               ? '<a id="navLogout">Logg ut</a>'
-              : '<a id="navLogin">Logg inn</a><a class="btn btn-primary btn-small" id="navSignup">Kom i gang</a>') +
+              : '<a id="navLogin">Logg inn</a><a class="btn btn-primary btn-small" id="navSignup">Prøv gratis</a>') +
           '</nav>' +
         '</div>' +
       '</header>';
@@ -840,7 +855,7 @@
         '<li>Kostnadsoversikt med CSV-eksport</li>' +
       '</ul>' +
       '<button class="btn btn-primary btn-block" id="' + buttonId + '">' + buttonLabel + '</button>' +
-      '<p class="pricing-fine">Ingen bindingstid. Du avslutter selv under «Administrer abonnement».</p>' +
+      '<p class="pricing-fine">14 dager gratis, uten kort. Ingen bindingstid — du avslutter selv under «Administrer abonnement».</p>' +
     '</div></div>';
   }
 
@@ -857,11 +872,12 @@
         '<h1>Slutt å lete etter kvitteringen i en e‑posttråd.</h1>' +
         '<p class="lp-hero-lede">EiendomsLogga samler feil, bilder, kvitteringer, vedlikehold og inspeksjoner for hver bolig på ett sted — med dato, historikk og signatur, klart når noen spør.</p>' +
         '<div class="lp-hero-actions">' +
-          '<button class="btn btn-primary btn-lg" id="heroCta">Kom i gang</button>' +
+          '<button class="btn btn-primary btn-lg" id="heroCta">Prøv gratis i 14 dager</button>' +
           '<a class="btn btn-ghost btn-lg" href="#slik-fungerer-det">Se hvordan det fungerer</a>' +
         '</div>' +
         '<ul class="trust-row">' +
-          '<li>499 kr i måneden — ubegrenset antall boliger</li>' +
+          '<li>14 dager gratis, uten kort</li>' +
+          '<li>Deretter 499 kr i måneden — ubegrenset antall boliger</li>' +
           '<li>Ingen bindingstid</li>' +
           '<li>Dataene dine kan eksporteres når som helst</li>' +
         '</ul>' +
@@ -936,7 +952,7 @@
     html += '<section class="lp-section reveal" id="priser"><div class="lp-inner" style="text-align:center;">' +
       '<p class="eyebrow" style="text-align:center;">PRISER</p><h2 style="margin-left:auto;margin-right:auto;">Ett abonnement, alt inkludert</h2>' +
       '<p class="lp-lede" style="margin-left:auto;margin-right:auto;text-align:center;">Ingen skjulte kostnader. Legg til så mange boliger du trenger.</p>' +
-      pricingCardHtml('pricingCta', 'Kom i gang') +
+      pricingCardHtml('pricingCta', 'Prøv gratis i 14 dager') +
       '<div class="calc"><label for="calcRange">Hvor mange boliger har du?</label>' +
         '<input id="calcRange" type="range" min="1" max="20" value="3">' +
         '<p class="calc-out"><b id="calcN">3</b> <span id="calcUnit">boliger</span> gir <b id="calcPer">166 kr</b> per bolig i måneden</p></div>' +
@@ -945,13 +961,14 @@
     html += '<section class="lp-section tinted reveal" id="sporsmal"><div class="lp-inner faq-wrap">' +
       '<p class="eyebrow">SPØRSMÅL</p><h2>Ofte stilte spørsmål</h2>' +
       '<div class="faq-list">' +
-        faqItem('Hva koster det?', '499 kr i måneden, for alle boligene dine. Det er ingen ekstra pris per bolig.') +
+        faqItem('Hva koster det?', '499 kr i måneden, for alle boligene dine. Det er ingen ekstra pris per bolig. De første 14 dagene er gratis, og du trenger ikke kort for å prøve.') +
         faqItem('Er det bindingstid?', 'Nei. Du kan avslutte abonnementet selv under «Administrer abonnement» i appen.') +
         faqItem('Fungerer det på mobil?', 'Ja. EiendomsLogga kjører i nettleseren på mobil, nettbrett og PC, så du kan ta bilder og fylle ut inspeksjonen mens du er i boligen.') +
         faqItem('Må leietaker ha konto?', 'Nei. Leietaker trenger ikke gjøre noe på forhånd. Ved inspeksjonen signerer begge parter direkte på skjermen din.') +
         faqItem('Hvem eier dataene mine?', 'Du. Du kan eksportere alt som JSON, og laste ned loggen som CSV. Slettes en bolig, slettes loggen for den også.') +
         faqItem('Er rapportene juridisk bindende?', 'Rapportene er dokumentasjon med dato og signaturer fra begge parter. EiendomsLogga gir ikke juridisk rådgivning, og hvor mye en rapport veier i en tvist avhenger av saken.') +
         faqItem('Hvor lagres dataene, og hva med betalingen?', 'Data lagres hos Supabase. Betalingen håndteres av Stripe, og kortopplysningene dine lagres aldri hos oss. Les mer i <a href="personvern.html">personvernerklæringen</a>.') +
+        faqItem('Hva er forskjellen fra Hybel og andre utleieportaler?', 'Utleieportaler er laget for å finne leietaker og signere kontrakt. EiendomsLogga er boligens egen logg gjennom hele leieforholdet: feil fra meldt til utbedret, vedlikehold med neste dato, kvitteringer og kostnader per år, og inspeksjoner du kan sammenligne ved utflytting. Du kan gjerne bruke begge.') +
         faqItem('Hvem står bak?', 'EiendomsLogga drives av Enkel Orden AS i Kristiansand (org.nr. 838 591 892).') +
       '</div>' +
     '</div></section>';
@@ -959,21 +976,21 @@
     html += '<section class="lp-section cta-band reveal"><div class="lp-inner" style="text-align:center;">' +
       '<h2 style="margin-left:auto;margin-right:auto;max-width:26ch;">Få orden på boligene før noen spør om dokumentasjon</h2>' +
       '<p class="lp-lede" style="margin:0 auto 26px;text-align:center;">Registrer den første boligen på noen minutter.</p>' +
-      '<button class="btn btn-primary btn-lg" id="ctaBandBtn">Kom i gang</button>' +
+      '<button class="btn btn-primary btn-lg" id="ctaBandBtn">Prøv gratis i 14 dager</button>' +
     '</div></section>';
 
     html += '<footer class="lp-footer"><div class="lp-inner lp-footer-inner">' +
       '<span>© 2026 Enkel Orden AS · Org.nr. 838 591 892 · Videoklipp: RDNE Stock project / Pexels</span>' +
-      '<span class="lp-footer-links"><a href="kontakt.html">Kontakt</a><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
+      '<span class="lp-footer-links"><a href="kontakt.html">Kontakt</a><a href="innflyttingsprotokoll.html">Gratis sjekkliste for innflytting</a><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
         (CONTACT_EMAIL ? '<a href="mailto:' + escapeHtml(CONTACT_EMAIL) + '">' + escapeHtml(CONTACT_EMAIL) + '</a>' : '') + '</span>' +
       '<span class="mono">LOGGET I KRISTIANSAND</span>' +
     '</div></footer>';
 
-    html += '<div class="sticky-cta" id="stickyCta" hidden><button class="btn btn-primary btn-block" id="stickyCtaBtn">Kom i gang — 499 kr/mnd</button></div>';
+    html += '<div class="sticky-cta" id="stickyCta" hidden><button class="btn btn-primary btn-block" id="stickyCtaBtn">Prøv gratis i 14 dager</button></div>';
 
     viewWrap.innerHTML = html;
 
-    function goSignup() { setPhase(currentUser ? 'paywall' : 'signup'); }
+    function goSignup() { setPhase(currentUser ? (hasAccess() ? 'app' : 'paywall') : 'signup'); }
     ['heroCta', 'pricingCta', 'ctaBandBtn', 'stickyCtaBtn'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener('click', goSignup);
@@ -1186,7 +1203,7 @@
     viewWrap.innerHTML =
       '<div class="auth-wrap"><div class="auth-card">' +
         '<h1>Opprett konto</h1>' +
-        '<p class="lp-lede">Registrer deg for å sette opp abonnementet ditt.</p>' +
+        '<p class="lp-lede">Opprett konto og prøv EiendomsLogga gratis i 14 dager. Du trenger ikke kort for å starte.</p>' +
         (errorMsg ? '<div class="auth-error">' + escapeHtml(errorMsg) + '</div>' : '') +
         '<form id="signupForm">' +
           '<div class="form-field"><label for="su-name">Navn</label><input id="su-name" name="name" required autocomplete="name"></div>' +
@@ -1242,10 +1259,16 @@
     viewWrap.innerHTML =
       '<div class="paywall-wrap">' +
         '<div class="paywall-lock">' + iconLock() + '</div>' +
-        '<h1>Fullfør abonnementet for å låse opp EiendomsLogga</h1>' +
-        '<p class="lp-lede">Hei ' + escapeHtml(currentUser ? currentUser.name : '') + '! Kontoen din er opprettet. Aktiver abonnementet for å få tilgang til boliger, logg, vedlikehold og inspeksjoner.</p>' +
+        (trialDaysLeft() > 0
+          ? '<h1>Aktiver abonnementet når du er klar</h1>' +
+            '<p class="lp-lede">Du har ' + trialDaysLeft() + ' dager igjen av prøveperioden. Aktiverer du nå, beholder du alt du har registrert. <a href="#" id="backToAppLink">Tilbake til appen</a></p>'
+          : '<h1>Prøveperioden er over</h1>' +
+            '<p class="lp-lede">Hei ' + escapeHtml(currentUser ? currentUser.name : '') + '! Aktiver abonnementet for å fortsette med boliger, logg, vedlikehold og inspeksjoner. Alt du har registrert, ligger klart.</p>') +
         pricingCardReplace() +
       '</div>';
+
+    var backLink = document.getElementById('backToAppLink');
+    if (backLink) backLink.addEventListener('click', function (e) { e.preventDefault(); setPhase('app'); });
 
     document.getElementById('activateSub').addEventListener('click', async function () {
       var btn = this;
@@ -1282,6 +1305,25 @@
      ================================================================ */
 
   function render() {
+    var result = renderView();
+    addTrialBanner();
+    return result;
+  }
+
+  function addTrialBanner() {
+    if (phase !== 'app' || !currentUser || currentUser.subscribed) return;
+    var days = trialDaysLeft();
+    if (days <= 0) return;
+    var bar = document.createElement('div');
+    bar.className = 'trial-banner';
+    bar.setAttribute('role', 'status');
+    bar.innerHTML = '<span>Gratis prøveperiode: <strong>' + days + (days === 1 ? ' dag' : ' dager') + ' igjen</strong>. Deretter 499 kr i måneden.</span>' +
+      '<button class="btn btn-primary btn-small" type="button" id="trialActivateBtn">Aktiver abonnement</button>';
+    viewWrap.insertBefore(bar, viewWrap.firstChild);
+    document.getElementById('trialActivateBtn').addEventListener('click', function () { setPhase('paywall'); });
+  }
+
+  function renderView() {
     if (state.view === 'dashboard') return renderDashboard();
     if (state.view === 'properties') return renderProperties();
     if (state.view === 'property-detail') return renderPropertyDetail();
@@ -2543,7 +2585,8 @@
       if (session) {
         await afterAuthSuccess();
       } else {
-        phase = 'landing';
+        var startParam = new URLSearchParams(window.location.search).get('start');
+        phase = (startParam === 'signup' || startParam === 'login') ? startParam : 'landing';
         applyViewWrapClass();
         renderHeader();
         renderPhaseView();
