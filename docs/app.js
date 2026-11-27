@@ -703,7 +703,7 @@
   }
 
   // Fyll inn en e-postadresse her, så vises den i bunnteksten på forsiden. Tom = vises ikke.
-  var CONTACT_EMAIL = '';
+  var CONTACT_EMAIL = 'enkelordenaa@gmail.com';
 
   function howStep(num, title, body, iconHtml) {
     return '<div class="how-step"><div class="how-step-icon">' + iconHtml + '</div><p class="how-step-num mono">STEG ' + num + '</p><h3>' + title + '</h3><p>' + body + '</p></div>';
@@ -964,7 +964,7 @@
 
     html += '<footer class="lp-footer"><div class="lp-inner lp-footer-inner">' +
       '<span>© 2026 Enkel Orden AS · Org.nr. 838 591 892 · Videoklipp: RDNE Stock project / Pexels</span>' +
-      '<span class="lp-footer-links"><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
+      '<span class="lp-footer-links"><a href="kontakt.html">Kontakt</a><a href="personvern.html">Personvern</a><a href="vilkar.html">Vilkår</a>' +
         (CONTACT_EMAIL ? '<a href="mailto:' + escapeHtml(CONTACT_EMAIL) + '">' + escapeHtml(CONTACT_EMAIL) + '</a>' : '') + '</span>' +
       '<span class="mono">LOGGET I KRISTIANSAND</span>' +
     '</div></footer>';
