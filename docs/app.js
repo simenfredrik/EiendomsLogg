@@ -570,7 +570,7 @@
         '<div class="marketing-header-inner">' +
           '<div class="brand" id="brandHome" style="cursor:pointer;"><span class="logo-mark">EL</span><span class="logo-word">Eiendoms<em>Logga</em></span></div>' +
           '<nav class="marketing-nav-links">' +
-            (phase === 'landing' ? '<a class="nav-anchor" href="#slik-fungerer-det">Slik fungerer det</a><a class="nav-anchor" href="#priser">Priser</a><a class="nav-anchor" href="#sporsmal">Spørsmål</a>' : '') +
+            (phase === 'landing' ? '<a class="nav-anchor" href="#slik-fungerer-det">Slik fungerer det</a><a class="nav-anchor" href="#priser">Priser</a><a class="nav-anchor" href="#sporsmal">Spørsmål</a><a class="nav-anchor" href="kontakt.html">Kontakt</a>' : '') +
             (showLogout
               ? '<a id="navLogout">Logg ut</a>'
               : '<a id="navLogin">Logg inn</a><a class="btn btn-primary btn-small" id="navSignup">Prøv gratis</a>') +
